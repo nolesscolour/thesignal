@@ -1974,7 +1974,7 @@ class Signal extends React.Component {
       obLabel: this.OB_BEATS[Math.max(0, Math.min(2, this.state.obStep - 2))].label,
       obBodyLines: this.state.started ? [] : this.OB_BEATS[Math.max(0, Math.min(2, this.state.obStep - 2))].body.map((b) => ({
         text: b.t,
-        style: { fontFamily: "'VT323',monospace", fontSize: '18px', lineHeight: '1.5', color: b.red ? '#e1232b' : '#9a9a9a', marginTop: b.red ? '8px' : '0', textAlign: 'center' },
+        style: { fontFamily: "'VT323',monospace", fontSize: '19px', lineHeight: '1.4', color: b.red ? '#e1232b' : '#8a8a8a', marginTop: b.red ? '18px' : '0', textAlign: 'left' },
       })),
       obVis1: this.state.obStep === 2, obVis2: this.state.obStep === 3, obVis3: this.state.obStep === 4,
       obNext: this.obNext, obSkip: this.obSkip, obReplay: this.obReplay, obMap: this.obMap, startGame: this.startGame,
@@ -2259,59 +2259,66 @@ class Signal extends React.Component {
   
             {/* --- story beats --- */}
             {v.obStory && (
-              <div style={css("display:flex;flex-direction:column;align-items:center;max-width:460px")}>
-                <div style={css("font-family:'VT323',monospace;font-size:16px;color:#e1232b;letter-spacing:3px")}>{v.obLabel}</div>
-                <div style={css("font-family:'VT323',monospace;font-size:23px;line-height:1.3;color:#ffffff;margin-top:14px;min-height:62px")}>
-                  {v.obText}
-                  <span style={css("animation:sigblink 0.8s steps(1) infinite")}>_</span>
+              <React.Fragment>
+                <div style={css("position:absolute;top:calc(13vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(400px, calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-start;text-align:left")}>
+
+                  <div style={css("height:64px;display:flex;align-items:flex-end;margin-bottom:32px")}>
+                    {v.obVis1 && (
+                      <div style={css("display:flex;gap:10px;align-items:center")}>
+                        <div style={css("width:16px;height:16px;background:#ffffff")} />
+                        <div style={css("width:16px;height:16px;background:#ffffff;opacity:0.6")} />
+                        <div style={css("width:16px;height:16px;background:#ffffff;opacity:0.3")} />
+                        <div style={css("width:16px;height:16px;border:2px solid #ffffff;box-sizing:border-box")} />
+                        <div style={css("width:16px;height:16px;border:1px solid #3a3a3a;box-sizing:border-box")} />
+                        <div style={css("width:10px;height:10px;background:#e1232b;animation:sigblink 1.1s steps(1) infinite;margin-left:8px")} />
+                      </div>
+                    )}
+                    {v.obVis2 && (
+                      <div style={css("display:flex;gap:16px")}>
+                        <div style={css("position:relative;width:26px;height:26px;border:2px solid #ffffff;border-radius:50%;box-sizing:border-box")}>
+                          <div style={css("position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:#e1232b;border-radius:50%")} />
+                        </div>
+                        <div style={css("position:relative;width:26px;height:26px;border:2px solid #ffffff;border-radius:50%;box-sizing:border-box")}>
+                          <div style={css("position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:#e1232b;border-radius:50%")} />
+                        </div>
+                        <div style={css("position:relative;width:26px;height:26px;border:2px solid #ffffff;border-radius:50%;box-sizing:border-box")}>
+                          <div style={css("position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:#e1232b;border-radius:50%;animation:sigblink 0.6s steps(1) infinite")} />
+                        </div>
+                      </div>
+                    )}
+                    {v.obVis3 && (
+                      <div style={css("position:relative;width:40px;height:62px")}>
+                        <div style={css("position:absolute;left:50%;top:0;width:6px;height:6px;margin-left:-3px;background:#3a3a3a")} />
+                        <div style={css("position:absolute;left:50%;top:7px;width:3px;height:46px;margin-left:-1px;background:#ffffff")} />
+                        <div style={css("position:absolute;left:50%;top:16px;width:26px;height:2px;margin-left:-13px;background:#ffffff")} />
+                        <div style={css("position:absolute;left:50%;top:31px;width:18px;height:2px;margin-left:-9px;background:#ffffff")} />
+                        <div style={css("position:absolute;left:50%;top:53px;width:34px;height:3px;margin-left:-17px;background:#ffffff")} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={css("font-family:'VT323',monospace;font-size:15px;line-height:1;color:#e1232b;letter-spacing:3px")}>{v.obLabel}</div>
+
+                  <div style={css("font-family:'VT323',monospace;font-size:30px;line-height:1.15;color:#ffffff;margin-top:14px;min-height:69px")}>
+                    {v.obText}
+                    <span style={css("animation:sigblink 0.8s steps(1) infinite")}>_</span>
+                  </div>
+
+                  <div style={css("width:32px;height:2px;background:#3a3a3a;margin:28px 0")} />
+
+                  <div style={css("display:flex;flex-direction:column;gap:6px")}>
+                    {v.obBodyLines.map((bl, i) => <div key={i} style={css(bl.style)}>{bl.text}</div>)}
+                  </div>
                 </div>
-  
-                {v.obVis1 && (
-                  <div style={css("display:flex;gap:12px;margin:6px 0 16px;align-items:center")}>
-                    <div style={css("width:16px;height:16px;background:#ffffff")} />
-                    <div style={css("width:16px;height:16px;background:#ffffff;opacity:0.6")} />
-                    <div style={css("width:16px;height:16px;background:#ffffff;opacity:0.3")} />
-                    <div style={css("width:16px;height:16px;border:2px solid #ffffff;box-sizing:border-box")} />
-                    <div style={css("width:16px;height:16px;border:1px solid #3a3a3a;box-sizing:border-box")} />
-                    <div style={css("width:10px;height:10px;background:#e1232b;animation:sigblink 1.1s steps(1) infinite;margin-left:8px")} />
-                  </div>
-                )}
-  
-                {v.obVis2 && (
-                  <div style={css("display:flex;gap:22px;margin:6px 0 16px")}>
-                    <div style={css("position:relative;width:26px;height:26px;border:2px solid #ffffff;border-radius:50%;box-sizing:border-box")}>
-                      <div style={css("position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:#e1232b;border-radius:50%")} />
-                    </div>
-                    <div style={css("position:relative;width:26px;height:26px;border:2px solid #ffffff;border-radius:50%;box-sizing:border-box")}>
-                      <div style={css("position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:#e1232b;border-radius:50%")} />
-                    </div>
-                    <div style={css("position:relative;width:26px;height:26px;border:2px solid #ffffff;border-radius:50%;box-sizing:border-box")}>
-                      <div style={css("position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;background:#e1232b;border-radius:50%;animation:sigblink 0.6s steps(1) infinite")} />
-                    </div>
-                  </div>
-                )}
-  
-                {v.obVis3 && (
-                  <div style={css("position:relative;width:70px;height:62px;margin:6px 0 16px")}>
-                    <div style={css("position:absolute;left:50%;top:0;width:6px;height:6px;margin-left:-3px;background:#3a3a3a")} />
-                    <div style={css("position:absolute;left:50%;top:7px;width:3px;height:46px;margin-left:-1px;background:#ffffff")} />
-                    <div style={css("position:absolute;left:50%;top:16px;width:26px;height:2px;margin-left:-13px;background:#ffffff")} />
-                    <div style={css("position:absolute;left:50%;top:31px;width:18px;height:2px;margin-left:-9px;background:#ffffff")} />
-                    <div style={css("position:absolute;left:50%;top:53px;width:34px;height:3px;margin-left:-17px;background:#ffffff")} />
-                  </div>
-                )}
-  
-                <div style={css("width:min(320px,72vw);height:1px;background:#3a3a3a;margin-bottom:14px")} />
-                <div style={css("display:flex;flex-direction:column;gap:6px;align-items:center")}>
-                  {v.obBodyLines.map((bl, i) => <div key={i} style={css(bl.style)}>{bl.text}</div>)}
+
+                <div style={css("position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));width:min(400px, calc(100vw - 48px));display:flex")}>
+                  <Btn
+                    onClick={v.obNext}
+                    base="background:#000000;border:2px solid #ffffff;color:#ffffff;font-family:'Silkscreen',monospace;font-size:11px;font-weight:700;letter-spacing:3px;padding:13px 24px;cursor:pointer"
+                    hover="background:#ffffff;color:#000000"
+                  >NEXT ▸</Btn>
                 </div>
-  
-                <Btn
-                  onClick={v.obNext}
-                  base="margin-top:24px;background:#000000;border:2px solid #ffffff;color:#ffffff;font-family:'Silkscreen',monospace;font-size:11px;font-weight:700;letter-spacing:3px;padding:13px 24px;cursor:pointer"
-                  hover="background:#ffffff;color:#000000"
-                >NEXT ▸</Btn>
-              </div>
+              </React.Fragment>
             )}
   
             {/* --- field manual / difficulty --- */}
