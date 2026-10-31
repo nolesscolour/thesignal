@@ -108,6 +108,7 @@ class Signal extends React.Component {
     this._kd = (e) => {
       if (['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowLeft','ArrowDown','ArrowRight','Space'].indexOf(e.code) >= 0) e.preventDefault();
       this.ensureAudio();
+      if (e.code === 'Tab') { e.preventDefault(); if (this.state.started && this.g && !this.g.over) this.g.mapOn = true; return; }
       if (!this.state.started) {
         if ((e.code === 'Enter' || e.code === 'Space') && !e.repeat) this.obNext();
         return;
@@ -123,6 +124,7 @@ class Signal extends React.Component {
       if (e.code === 'Space' && !e.repeat) this.g.tapShot = true;
     };
     this._ku = (e) => {
+      if (e.code === 'Tab') this.g.mapOn = false;
       this.g.keys[e.code] = false;
       if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt') this.g.keys = {};
       this._klog(e.type, e.code);
@@ -169,6 +171,7 @@ class Signal extends React.Component {
     window.addEventListener('resize', this._onRz);
     window.addEventListener('orientationchange', this._onRz);
     this._onBlur = () => {
+      this.g.mapOn = false;
       this.g.keys = {}; this.g.fireHeld = false;
       this.g.moveId = null; this.g.moveVec = { x: 0, y: 0 };
       this.setKnob(0, 0);
@@ -1466,6 +1469,42 @@ class Signal extends React.Component {
 
     if (g.flashT > 0) { ctx.fillStyle = this.pat.flash; ctx.fillRect(0, 0, V, V); }
 
+    if (g.mapOn && this.state.started && !g.over) this.drawMinimap(ctx, t);
+
+  }
+
+  drawMinimap(ctx, t) {
+    const g = this.g, p = g.player, V = this.V;
+    const mh = 212;
+    const k = mh / this.H;
+    const mw = Math.round(this.W * k);
+    const mx = Math.round((V - mw) / 2), my = Math.round((V - mh) / 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(mx - 3, my - 3, mw + 6, 1);
+    ctx.fillRect(mx - 3, my + mh + 2, mw + 6, 1);
+    ctx.fillRect(mx - 3, my - 3, 1, mh + 6);
+    ctx.fillRect(mx + mw + 2, my - 3, 1, mh + 6);
+    const TX = (wx) => Math.round(mx + wx * k);
+    const TY = (wy) => Math.round(my + wy * k);
+    const tx = TX(418), ty = TY(80);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(tx, ty - 4, 1, 8);
+    ctx.fillRect(tx - 3, ty - 2, 7, 1);
+    ctx.fillRect(tx - 2, ty + 1, 5, 1);
+    if (t % 1 < 0.5) { ctx.fillStyle = '#e1232b'; ctx.fillRect(tx, ty - 5, 1, 2); }
+    for (const sp of g.sparts) {
+      const ox = TX(sp.x), oy = TY(sp.y);
+      if (sp.taken) { ctx.fillStyle = '#3a3a3a'; ctx.fillRect(ox - 1, oy - 1, 3, 3); }
+      else {
+        ctx.fillStyle = (t % 0.9 < 0.55) ? '#ffffff' : '#8a8a8a';
+        ctx.fillRect(ox - 1, oy - 2, 3, 5);
+        ctx.fillRect(ox - 2, oy - 1, 5, 3);
+      }
+    }
+    const px = TX(p.x), py = TY(p.y);
+    if (t % 0.6 < 0.42) { ctx.fillStyle = '#e1232b'; ctx.fillRect(px - 1, py - 1, 3, 3); }
   }
 
   mist(ctx, t) {
@@ -1924,6 +1963,8 @@ class Signal extends React.Component {
       diffDesc: this.state.diffHard ? 'FASTER PATROLS. SCARCE AMMO. RELENTLESS HUNTS.' : 'STANDARD PATROLS. FAIR SCAVENGE.',
       radioOn: this.state.radioOn, radioText: this.state.radioText,
       hintOn: this.state.hintOn,
+      markerHintOn: this.state.started && !this.state.hintOn && !this.state.fixText && this.state.parts === 0 && !this.state.dead && !this.state.complete,
+      markerHintText: this.tm() ? 'FOLLOW THE WHITE MARKERS' : 'FOLLOW THE WHITE MARKERS · [TAB] MAP',
       hintText: this.tm() ? 'STICK — MOVE + AIM · FIRE — SHOOT' : 'WASD MOVE · MOUSE AIM · CLICK FIRE',
       isTouch: this.tm(), isDesktop: !this.tm(),
       showIntro: !this.state.started,
@@ -2038,6 +2079,12 @@ class Signal extends React.Component {
               </div>
             )}
   
+            {v.markerHintOn && (
+              <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
+                <div style={css("background:#000000;border:1px solid #ffffff;padding:3px 10px;font-family:'VT323',monospace;font-size:16px")}>{v.markerHintText}</div>
+              </div>
+            )}
+
             {v.fixOn && (
               <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
                 <div style={css("background:#000000;border:1px solid #e1232b;color:#e1232b;padding:3px 10px;font-family:'VT323',monospace;font-size:16px;animation:sigblink 1s steps(1) infinite")}>{v.fixText}</div>
@@ -2095,7 +2142,7 @@ class Signal extends React.Component {
               <div>WASD — MOVE</div>
               <div>MOUSE — AIM</div>
               <div>CLICK — FIRE</div>
-              <div>[R]ETRY · [ESC] MENU</div>
+              <div>[R]ETRY · [TAB] MAP · [ESC] MENU</div>
             </div>
           )}
         </div>
