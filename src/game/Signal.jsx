@@ -1,5 +1,5 @@
 import React from 'react';
-import { levelById } from './levels.js';
+import { LEVELS, PLANNED, levelById } from './levels.js';
 const _cssCache = new Map();
 
 function css(s) {
@@ -50,6 +50,7 @@ class Signal extends React.Component {
   fireBtnRef = React.createRef();
   moveBaseRef = React.createRef();
   moveKnobRef = React.createRef();
+  dbgRef = React.createRef();
 
   tm() {
     const c = this.props.controls;
@@ -63,20 +64,88 @@ class Signal extends React.Component {
     isTouch: (typeof window !== 'undefined') && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) && !(window.matchMedia && window.matchMedia('(pointer: fine)').matches),
     radioOn: false, radioText: '',
     hintOn: false, hunted: false, parts: 0, fixText: '', hiddenOn: false, rapidSec: 0, diffHard: false,
-    started: false, obStep: 0, obText: '', obSeen: false, landscapeBlock: false, l1Cleared: false, hasSave: false,
+    started: false, obStep: 0, obText: '', obSeen: false, landscapeBlock: false, cleared: {}, hasSave: false,
     statTime: '0:00', statShots: '0', statAcc: '0%',
     levelId: 1,
   };
 
   /* Current level's data (src/game/levels.js). */
-  get L() { return levelById(this.state ? this.state.levelId : 1); }
+  get L() { return levelById(this._levelId || 1); }
+
+  /* Index-based unlock: the first level is always open, any other opens once the one before it is cleared. */
+  isUnlocked(id) {
+    if (this._unlockAll) return true;
+    const i = LEVELS.findIndex((l) => l.id === id);
+    if (i <= 0) return i === 0;
+    return !!this.state.cleared[LEVELS[i - 1].id];
+  }
+
+  nextLevel() {
+    const i = LEVELS.findIndex((l) => l.id === this.L.id);
+    return i >= 0 && i < LEVELS.length - 1 ? LEVELS[i + 1] : null;
+  }
+
+  /* Reads a level's saved checkpoint / parts into the run fields. */
+  readSave() {
+    this._cpIdx = -1; this._cpParts = null; this._deathAmmo = null;
+    try {
+      const sv = JSON.parse(localStorage.getItem(this.skey('save')) || 'null');
+      if (sv) {
+        this._cpIdx = typeof sv.cp === 'number' ? sv.cp : (sv.cp ? 0 : -1);
+        this._cpParts = sv.parts || null;
+        if (sv.ammo != null) this._deathAmmo = sv.ammo;
+      }
+    } catch (err) {}
+  }
+
+  hasSaveFor(id) {
+    try { const sv = JSON.parse(localStorage.getItem('thesignal_l' + id + '_save') || 'null'); return !!(sv && (typeof sv.cp === 'number' ? sv.cp >= 0 : sv.cp)); } catch (err) { return false; }
+  }
+
+  /* Swap to another level: world size, save, trees, ground, run state. */
+  loadLevel(id) {
+    this._levelId = levelById(id).id;
+    try { localStorage.setItem('thesignal_last', String(this._levelId)); } catch (err) {}
+    this.W = this.L.W; this.H = this.L.H;
+    if (this._radioInt) { clearInterval(this._radioInt); this._radioInt = null; }
+    this.readSave();
+    this.resetRun();
+    this.buildStatic();
+    this.setState({
+      levelId: this._levelId, hasSave: this._cpIdx >= 0,
+      health: 4, ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
+      kills: 0, dead: false, complete: false, hunted: false, hiddenOn: false,
+      radioOn: false, hintOn: false, fixText: '', rapidSec: 0,
+      parts: this.g.sparts.filter((s2) => s2.taken).length,
+    });
+  }
 
   /* Per-level localStorage key, e.g. thesignal_l1_save. */
   skey(suffix) { return 'thesignal_l' + this.L.id + '_' + suffix; }
 
+  /* Per-level ammo cap (Level 1 = 40). */
+  maxAmmo() { return this.L.maxAmmo || 40; }
+
+  /* True if (x, y) is inside this level's sewer band (pad grows the box). */
+  inSewerAt(x, y, pad = 0) {
+    const sw = this.L.sewer;
+    if (!sw) return false;
+    const z = sw.zone;
+    return x > z.x - pad && x < z.x + z.w + pad && y > z.y - pad && y < z.y + z.h + pad;
+  }
+
   componentDidMount() {
     if (this._booted) return;
     this._booted = true;
+    this._unlockAll = /[?&]unlockall\b/.test(window.location.search || '');
+    this._debug = /[?&]debug\b/.test(window.location.search || '');
+    window.__sigMounts = (window.__sigMounts || 0) + 1;
+    const clearedMap = {};
+    try { for (const lv of LEVELS) clearedMap[lv.id] = !!localStorage.getItem('thesignal_l' + lv.id + '_cleared'); } catch (err) {}
+    this.state.cleared = clearedMap;
+    let lastId = 1;
+    try { lastId = parseInt(localStorage.getItem('thesignal_last') || '1', 10) || 1; } catch (err) {}
+    this._levelId = this.isUnlocked(lastId) ? levelById(lastId).id : 1;
     this.V = 240; this.W = this.L.W; this.H = this.L.H;
     const cv = this.canvasRef.current;
     this.ctx = cv.getContext('2d');
@@ -101,14 +170,7 @@ class Signal extends React.Component {
     window.addEventListener('mouseup', this.onMouseUp);
     this.buildPatterns();
     this.g = {};
-    try {
-      const sv = JSON.parse(localStorage.getItem(this.skey('save')) || 'null');
-      if (sv) {
-        this._cp = !!sv.cp;
-        this._cpParts = sv.parts || null;
-        if (sv.ammo != null) this._deathAmmo = sv.ammo;
-      }
-    } catch (err) {}
+    this.readSave();
     this.resetRun();
     this.buildStatic();
     this._kd = (e) => {
@@ -153,17 +215,16 @@ class Signal extends React.Component {
     window.addEventListener('contextmenu', this._onCtx);
     this._raf = requestAnimationFrame(this.frame);
     this._timers = [];
-    let seen = false, cleared = false;
+    let seen = false;
     try {
       seen = !!localStorage.getItem('thesignal_l1_onboarded');
-      cleared = !!localStorage.getItem(this.skey('cleared'));
       if (localStorage.getItem('thesignal_diff') === 'vet') this.setState({ diffHard: true });
     } catch (err) {}
-    if (seen || cleared) this.setState({ obSeen: seen, l1Cleared: cleared });
-    if (this._cp || (this._cpParts && this._cpParts.some(Boolean))) {
+    this.setState({ obSeen: seen, cleared: clearedMap, levelId: this._levelId, ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo() });
+    if (this._cpIdx >= 0 || (this._cpParts && this._cpParts.some(Boolean))) {
       this.setState({
-        hasSave: !!this._cp,
-        ammo: (this._cp && this._deathAmmo != null) ? this._deathAmmo : 40,
+        hasSave: this._cpIdx >= 0,
+        ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
         parts: this.g.sparts.filter((s2) => s2.taken).length,
       });
     }
@@ -236,15 +297,20 @@ class Signal extends React.Component {
       bush: mk('#3fbf4f', 5),
       flash: mk('#e1232b', 6),
       treeG: mk('#3fbf4f', 3), qsY: mk('#e6c229', 3),
+      scan: mk('#3fbf4f', 4), sewerWall: mk('#3fbf4f', 2),
+      gLv: [null, ...Array.from({ length: 16 }, (_, i) => mk('#3fbf4f', i + 1))],
+      rLv: [null, ...Array.from({ length: 16 }, (_, i) => mk('#e1232b', i + 1))],
     };
   }
 
   resetRun() {
     const g = this.g, L = this.L;
-    const start = this._cp ? L.checkpoint.respawn : L.spawn;
+    const start = this._cpIdx >= 0 && L.checkpoints[this._cpIdx] ? L.checkpoints[this._cpIdx].respawn : L.spawn;
     g.player = { x: start.x, y: start.y, aim: -Math.PI / 2, fireCd: 0, iframes: 0 };
     const copy = (a) => (a || []).map((o) => ({ ...o }));
-    g.walls = copy(L.walls);
+    g.walls = copy(L.walls).concat(L.sewer ? L.sewer.walls.map((w) => ({ ...w, sewer: true })) : []);
+    g.channels = L.sewer ? copy(L.sewer.channels) : [];
+    g.inSewer = false; g.ping = null; g.pingCd = 0;
     g.enemies = (L.enemies || []).map((d, i) => {
       const p1 = { ...d.p1 }, p2 = { ...d.p2 };
       return {
@@ -269,6 +335,11 @@ class Signal extends React.Component {
     g.sparts = (L.parts || []).map((sp, i) => ({ ...sp, taken: kept ? !!kept[i] : false, prog: 0, alerted: false }));
     g.fix = 0; g.fixing = false; g.towerMsgT = 0; g.fixStage = 0;
     g.bushes = copy(L.bushes);
+    g.spots = (L.spotlights || []).map((sl) => {
+      let len = 0;
+      for (let i = 0; i < sl.path.length - 1; i++) len += Math.hypot(sl.path[i + 1].x - sl.path[i].x, sl.path[i + 1].y - sl.path[i].y);
+      return { ...sl, bx: sl.path[0].x, by: sl.path[0].y, pos: 0, dir: 1, len, exp: 0, alarm: 0, fireCd: 0, hpLeft: sl.hp || 3, dead: false };
+    });
     g.hidden = false; g.revealT = 0;
     g.bullets = []; g.parts = []; g.keys = {}; g.mouse = null;
     g.fireHeld = false; g.tapShot = false;
@@ -280,6 +351,16 @@ class Signal extends React.Component {
     g.flashT = 0; g.shakeT = 0; g.muzzle = 0; g.over = false;
     g.camX = Math.max(0, Math.min(this.W - this.V, start.x - 160)); g.camY = this.H - this.V;
     if (!g.trees || g.treesFor !== L.id) { g.trees = this.makeTrees(); g.treesFor = L.id; g.treeGrid = null; }
+  }
+
+  /* Point at distance d along a polyline. */
+  pathAt(path, d) {
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1], len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (d <= len) return { x: a.x + (b.x - a.x) * d / len, y: a.y + (b.y - a.y) * d / len };
+      d -= len;
+    }
+    return path[path.length - 1];
   }
 
   segDist(px, py, x1, y1, x2, y2) {
@@ -305,6 +386,11 @@ class Signal extends React.Component {
     while (trees.length < L.treeCount && guard++ < 6000) {
       const x = 14 + rnd() * (this.W - 28), y = 60 + rnd() * (this.H - 160);
       const seed = Math.floor(rnd() * 1e6);
+      if (L.treeZones) {
+        const z = L.treeZones.find((zz) => y >= zz.y0 && y < zz.y1);
+        if (z && rnd() > z.keep) continue;
+      }
+      if (L.noTrees && L.noTrees.some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h)) continue;
       if (Math.hypot(x - L.spawn.x, y - L.spawn.y) < 60) continue;
       if (Math.hypot(x - L.tower.x, y - L.tower.y) < 110) continue;
       if (this.inWall(x, y, 10)) continue;
@@ -323,7 +409,8 @@ class Signal extends React.Component {
       if (bad) continue;
       for (const ab of g.ammoB) if (Math.hypot(x - ab.x, y - ab.y) < 16) { bad = true; break; }
       if (bad) continue;
-      if (Math.hypot(x - L.checkpoint.x, y - L.checkpoint.y) < 32) continue;
+      if (L.checkpoints.some((c) => Math.hypot(x - c.x, y - c.y) < 32)) continue;
+      if (this.inSewerAt(x, y, 14)) continue;
       if (Math.hypot(x - L.tower.x, y - (L.tower.y + 2)) < 46) continue;
       for (const L of g.lakes) if (Math.hypot(x - L.x, y - L.y) < L.r + 14) { bad = true; break; }
       if (bad) continue;
@@ -360,7 +447,22 @@ class Signal extends React.Component {
       s.save(); s.beginPath(); s.arc(x, y, r, 0, Math.PI * 2); s.clip();
       s.fillStyle = this.pat.patch; s.fillRect(x - r, y - r, r * 2, r * 2); s.restore();
     }
+    const sw = this.L.sewer;
+    if (sw) {
+      const z = sw.zone;
+      s.fillStyle = '#000000'; s.fillRect(z.x, z.y, z.w, z.h);
+      s.fillStyle = this.pat.scan;
+      for (let yy = z.y + 1; yy < z.y + z.h; yy += 4) s.fillRect(z.x, yy, z.w, 1);
+    }
     for (const w of this.g.walls) {
+      if (w.sewer) {
+        s.fillStyle = '#000000'; s.fillRect(w.x, w.y, w.w, w.h);
+        s.fillStyle = this.pat.sewerWall; s.fillRect(w.x + 2, w.y + 2, Math.max(0, w.w - 4), Math.max(0, w.h - 4));
+        s.fillStyle = '#3fbf4f';
+        s.fillRect(w.x, w.y, w.w, 1); s.fillRect(w.x, w.y + w.h - 1, w.w, 1);
+        s.fillRect(w.x, w.y, 1, w.h); s.fillRect(w.x + w.w - 1, w.y, 1, w.h);
+        continue;
+      }
       s.fillStyle = this.pat.wall; s.fillRect(w.x, w.y, w.w, w.h);
       s.fillStyle = '#ffffff';
       for (let x = w.x; x < w.x + w.w; x += 3) { s.fillRect(x, w.y, 2, 1); s.fillRect(x, w.y + w.h - 1, 2, 1); }
@@ -613,7 +715,10 @@ class Signal extends React.Component {
     if (g.keyT) {
       const nowT = performance.now();
       for (const k in g.keys) {
-        if (g.keys[k] && g.keyT[k] && nowT - g.keyT[k] > 1500) { g.keys[k] = false; this._klog('watchdog-release', k); }
+        if (g.keys[k] && g.keyT[k] && nowT - g.keyT[k] > 1500) {
+          g.keys[k] = false; this._klog('watchdog-release', k);
+          this._wdLast = k.replace('Key', '') + ' @' + Math.round(g.time) + 's';
+        }
       }
     }
     let mx = 0, my = 0, stickOn = false;
@@ -640,15 +745,25 @@ class Signal extends React.Component {
         tm: this.tm(), foc: document.hasFocus(),
       });
       if (this._dbgLog.length > 120) this._dbgLog.shift();
+      if (this._debug && this.dbgRef.current) this.dbgRef.current.textContent = 'KEYS ' + (Object.keys(g.keys).filter((k) => g.keys[k]).join(' ') || '-') + ' | MOVE ' + (Math.round(mx * 100) / 100) + ',' + (Math.round(my * 100) / 100) + ' | TOUCH ' + (this.tm() ? 'ON' : 'OFF') + ' | LOOPS ' + window.__sigMounts + ' | AUTO-RELEASED ' + (this._wdLast || '-');
     }
     let spd = 100;
     for (const q of g.qs) { if (Math.hypot(p.x - q.x, p.y - q.y) < q.r) { spd = 45; break; } }
+    if (L.sewer && this.inSewerAt(p.x, p.y)) spd *= L.sewer.speed;
     p.x += mx * spd * dt; p.y += my * spd * dt;
+    for (const ch of g.channels) {
+      if (p.x > ch.x && p.x < ch.x + ch.w && p.y > ch.y && p.y < ch.y + ch.h) {
+        p.x += ch.dx * ch.push * dt; p.y += ch.dy * ch.push * dt;
+        break;
+      }
+    }
     this.collideTrees(p, 4.5);
     this.collideWalls(p, 5.5);
     this.collideLakes(p, 3);
     p.x = Math.max(8, Math.min(this.W - 8, p.x));
     p.y = Math.max(40, Math.min(this.H - 40, p.y));
+    g.inSewer = this.inSewerAt(p.x, p.y);
+    if (g.inSewer !== !!this.state.inSewer) this.setState({ inSewer: g.inSewer });
     const prog = Math.max(0, Math.min(1, (L.spawn.y - p.y) / (L.spawn.y - (L.tower.y + 20))));
     if (prog > (g.maxProg || 0)) g.maxProg = prog;
     g.alertK = Math.max(0, (g.maxProg - 0.2) / 0.8);
@@ -688,7 +803,12 @@ class Signal extends React.Component {
       if (best !== null) p.aim += best * assist * (1 - bd / 240);
     }
 
-    if ((g.fireHeld || g.tapShot) && p.fireCd <= 0 && this.state.ammo <= 0) {
+    g.pingCd = (g.pingCd || 0) - dt;
+    if (g.ping) { g.ping.t += dt; if (g.ping.t > 2.2) g.ping = null; }
+    if (g.inSewer && (g.fireHeld || g.tapShot) && p.fireCd <= 0) {
+      p.fireCd = 0.25;
+      if (g.pingCd <= 0) { g.ping = { x: p.x, y: p.y, t: 0 }; g.pingCd = 2.2; this.sfx('ping'); }
+    } else if ((g.fireHeld || g.tapShot) && p.fireCd <= 0 && this.state.ammo <= 0) {
       p.fireCd = 0.32; this.sfx('dry');
     } else if ((g.fireHeld || g.tapShot) && p.fireCd <= 0) {
       p.fireCd = 0.22; g.shots++; g.muzzle = 0.07;
@@ -738,22 +858,25 @@ class Signal extends React.Component {
     }
     for (const ab of g.ammoB) {
       if (ab.taken) continue;
-      if (Math.hypot(p.x - ab.x, p.y - ab.y) < 13 && this.state.ammo < 40) {
+      if (Math.hypot(p.x - ab.x, p.y - ab.y) < 13 && this.state.ammo < this.maxAmmo()) {
         ab.taken = true; this.sfx('pick');
-        this.setState({ ammo: Math.min(40, this.state.ammo + ab.amt) });
+        this.setState({ ammo: Math.min(this.maxAmmo(), this.state.ammo + ab.amt) });
       }
     }
     for (const rt of g.radioTr) {
       if (rt.done) continue;
       if (p.x > rt.x && p.x < rt.x + rt.w && p.y > rt.y && p.y < rt.y + rt.h) { rt.done = true; this.startRadio(rt.line); }
     }
-    if (!this._cp && p.y < L.checkpoint.triggerY) {
-      this._cp = true;
-      this._cpParts = g.sparts.map((s2) => s2.taken);
-      this.saveRun();
-      this.setState({ hasSave: true });
-      this.sfx('win');
-      this.startRadio(L.radio.checkpoint);
+    for (let ci = L.checkpoints.length - 1; ci > this._cpIdx; ci--) {
+      if (p.y < L.checkpoints[ci].triggerY) {
+        this._cpIdx = ci;
+        this._cpParts = g.sparts.map((s2) => s2.taken);
+        this.saveRun();
+        this.setState({ hasSave: true });
+        this.sfx('win');
+        this.startRadio(L.checkpoints[ci].line || L.radio.checkpoint);
+        break;
+      }
     }
 
     const hitR = this.tm() ? 10 : 8;
@@ -761,6 +884,16 @@ class Signal extends React.Component {
       const b = g.bullets[i];
       b.t -= dt; b.x += b.vx * dt; b.y += b.vy * dt;
       let gone = b.t <= 0 || b.x < 0 || b.x > this.W || b.y < 0 || b.y > this.H;
+      if (!gone && b.from === 'p') {
+        for (const sl of g.spots) {
+          if (sl.dead || Math.hypot(b.x - sl.tower.x, b.y - (sl.tower.y - 16)) >= 6) continue;
+          sl.hpLeft--; gone = true;
+          this.burst(sl.tower.x, sl.tower.y - 16, 8, '#e1232b', 70);
+          if (sl.hpLeft <= 0) { sl.dead = true; sl.exp = 0; this.sfx('kill'); this.burst(sl.tower.x, sl.tower.y - 16, 12, '#ffffff', 90); this.startRadio('light is out.'); }
+          else this.sfx('hitE');
+          break;
+        }
+      }
       if (!gone && this.inWall(b.x, b.y, 0)) { this.burst(b.x, b.y, 2, '#ffffff', 40); gone = true; }
       if (!gone) {
         const bgrid = this.treeGrid(), bcx = b.x >> 6, bcy = b.y >> 6;
@@ -802,7 +935,7 @@ class Signal extends React.Component {
       e.rngCur += ((alertedNow ? rGrow : rBase) - e.rngCur) * Math.min(1, dt * 3);
       const rng = e.rngCur, half = (e.sniper ? 0.2 : 0.62) * (1 + ez * 0.18);
       e.halfCur = half; e.ez = ez;
-      const canSee = g.hidden ? (d < 26) : ((d < 44 || (d < rng && Math.abs(this.angDiff(e.face, ang)) < half)) && this.los(e.x, e.y, p.x, p.y));
+      const canSee = g.inSewer ? false : g.hidden ? (d < 26) : ((d < 44 || (d < rng && Math.abs(this.angDiff(e.face, ang)) < half)) && this.los(e.x, e.y, p.x, p.y));
       if (e.st === 'hide') {
         if (d < 34) {
           e.st = 'alert'; e.alertT = 0.4; e.face = ang;
@@ -925,6 +1058,37 @@ class Signal extends React.Component {
       }
     }
 
+    for (const sl of g.spots) {
+      if (sl.dead) continue;
+      let tx2, ty2;
+      if (sl.alarm > 0 && !g.hidden && !g.inSewer) { tx2 = p.x; ty2 = p.y; }        // alerted: track the player
+      else {
+        sl.pos += sl.dir * sl.speed * dt;                                            // otherwise: ping-pong sweep
+        if (sl.pos > sl.len) { sl.pos = sl.len; sl.dir = -1; }
+        if (sl.pos < 0) { sl.pos = 0; sl.dir = 1; }
+        const pt = this.pathAt(sl.path, sl.pos); tx2 = pt.x; ty2 = pt.y;
+      }
+      const ddx = tx2 - sl.bx, ddy = ty2 - sl.by, dd = Math.hypot(ddx, ddy), mv = (sl.alarm > 0 ? 85 : 110) * dt;
+      if (dd > mv) { sl.bx += ddx / dd * mv; sl.by += ddy / dd * mv; } else { sl.bx = tx2; sl.by = ty2; }
+      const inBeam = !g.hidden && !g.inSewer && Math.hypot(p.x - sl.bx, p.y - sl.by) < sl.radius;
+      sl.exp = inBeam ? Math.min(1, sl.exp + dt / 0.8) : Math.max(0, sl.exp - dt / 1.2);
+      if (sl.exp >= 1 && inBeam) {
+        if (sl.alarm <= 0) { this.sfx('alarm'); this.sfx('spot'); }
+        sl.alarm = 4;
+        g.heat = 20; g.lastKnown = { x: p.x, y: p.y }; g.lastVel = { x: mx, y: my }; g.seenNow = true;
+      }
+      if (sl.alarm > 0) {
+        sl.alarm -= dt; sl.fireCd -= dt;
+        if (inBeam && sl.fireCd <= 0) {
+          sl.fireCd = this.state.diffHard ? 0.45 : 0.6;
+          const lx = sl.tower.x, ly = sl.tower.y - 16;
+          const a = Math.atan2(p.y - ly, p.x - lx) + (Math.random() - 0.5) * 0.06;
+          g.bullets.push({ x: lx + Math.cos(a) * 8, y: ly + Math.sin(a) * 8, vx: Math.cos(a) * 230, vy: Math.sin(a) * 230, t: 3.2, from: 'e' });
+          this.sfx('eshot');
+        }
+      }
+    }
+
     if (g.heat > 0 && g.lastKnown) {
       if (!g.seenNow && g.lastVel && (g.lastVel.x || g.lastVel.y)) {
         g.lastKnown.x = Math.max(10, Math.min(this.W - 10, g.lastKnown.x + g.lastVel.x * 12 * dt));
@@ -1031,7 +1195,7 @@ class Signal extends React.Component {
         const a = Math.random() * Math.PI * 2;
         x = Math.max(14, Math.min(this.W - 14, p.x + Math.cos(a) * 300));
         y = Math.max(50, Math.min(this.H - 50, p.y + Math.sin(a) * 300));
-        ok = !this.inWall(x, y, 8) && Math.hypot(x - p.x, y - p.y) > 190;
+        ok = !this.inWall(x, y, 8) && !this.inSewerAt(x, y, 20) && Math.hypot(x - p.x, y - p.y) > 190;
       }
       if (!ok) continue;
       spawned++;
@@ -1082,7 +1246,7 @@ class Signal extends React.Component {
       }
       if (de < 260) heard = true;
     }
-    if (heard) {
+    if (heard && !this.inSewerAt(x, y)) {
       if (g.heat <= 0) this.sfx('alarm');
       g.heat = Math.max(g.heat, 8); g.lastKnown = { x, y }; g.lastVel = { x: 0, y: 0 };
     }
@@ -1151,7 +1315,7 @@ class Signal extends React.Component {
       localStorage.setItem(this.skey('cleared'), '1');
       localStorage.removeItem(this.skey('save'));
     } catch (err) {}
-    this.setState({ complete: true, l1Cleared: true, hasSave: false, statTime: m + ':' + s2, statShots: '' + g.shots, statAcc: acc + '%' });
+    this.setState({ complete: true, cleared: { ...this.state.cleared, [this.L.id]: true }, hasSave: false, statTime: m + ':' + s2, statShots: '' + g.shots, statAcc: acc + '%' });
   }
 
   draw(t) {
@@ -1164,6 +1328,7 @@ class Signal extends React.Component {
     const sy = Math.max(0, Math.min(this.H - V, g.camY + oy));
     ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, V, V);
     ctx.drawImage(this.staticC, sx, sy, V, V, 0, 0, V, V);
+    if (g.inSewer) this.drawGlow(ctx, p.x - sx, p.y - sy, p.aim);
     ctx.save(); ctx.translate(-sx, -sy);
 
     const tx = this.L.tower.x, ty = this.L.tower.y;
@@ -1192,12 +1357,43 @@ class Signal extends React.Component {
       ctx.fillStyle = '#e1232b'; ctx.fillRect(tx - 1, ty - 24, 3, 3);
     }
 
-    const cpx = this.L.checkpoint.x, cpy = this.L.checkpoint.y;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cpx + 1, cpy + 4, 2, 8);
-    ctx.fillRect(cpx - 2, cpy + 12, 8, 1);
-    if (this._cp) { ctx.fillStyle = '#3fbf4f'; ctx.fillRect(cpx, cpy, 4, 4); }
-    else if (t % 0.8 < 0.4) { ctx.fillStyle = '#e1232b'; ctx.fillRect(cpx, cpy, 4, 4); }
+    this.L.checkpoints.forEach((c, ci) => {
+      const cpx = c.x, cpy = c.y;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(cpx + 1, cpy + 4, 2, 8);
+      ctx.fillRect(cpx - 2, cpy + 12, 8, 1);
+      if (ci <= this._cpIdx) { ctx.fillStyle = '#3fbf4f'; ctx.fillRect(cpx, cpy, 4, 4); }
+      else if (t % 0.8 < 0.4) { ctx.fillStyle = '#e1232b'; ctx.fillRect(cpx, cpy, 4, 4); }
+    });
+
+    if (this.L.sewer && g.inSewer) {
+      /* Underground: redraw sewer walls over the floor glow as solid blocks with a bright edge,
+         so the beam stops at them and their shape reads at a glance. */
+      for (const w of g.walls) {
+        if (!w.sewer || w.x > sx + V || w.y > sy + V || w.x + w.w < sx || w.y + w.h < sy) continue;
+        ctx.fillStyle = '#000000'; ctx.fillRect(w.x, w.y, w.w, w.h);
+        ctx.fillStyle = this.pat.patch; ctx.fillRect(w.x + 3, w.y + 3, Math.max(0, w.w - 6), Math.max(0, w.h - 6));
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(w.x, w.y, w.w, 2); ctx.fillRect(w.x, w.y + w.h - 2, w.w, 2);
+        ctx.fillRect(w.x, w.y, 2, w.h); ctx.fillRect(w.x + w.w - 2, w.y, 2, w.h);
+      }
+    }
+
+    if (this.L.sewer) {
+      const ex = this.L.sewer.exit;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(ex.x - 16, ex.y + 20, 1, 26); ctx.fillRect(ex.x + 15, ex.y + 20, 1, 26);
+      for (let ry = ex.y + 23; ry < ex.y + 46; ry += 5) ctx.fillRect(ex.x - 16, ry, 32, 1);
+      for (const ch of g.channels) {
+        const off = ((t * ch.push * 0.5) % 14 + 14) % 14;
+        for (let yy = ch.y + 5; yy < ch.y + ch.h - 2; yy += 8) {
+          for (let xx = ch.x - 14; xx < ch.x + ch.w; xx += 14) {
+            const dx2 = xx + off * ch.dx + ((yy / 8) | 0) % 2 * 7;
+            if (dx2 >= ch.x && dx2 + 5 <= ch.x + ch.w) ctx.fillRect(Math.round(dx2), yy, 5, 1);
+          }
+        }
+      }
+    }
 
     if (g.fix > 0 && !g.over) {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(tx - 20, ty + 16, 40, 6);
@@ -1256,14 +1452,31 @@ class Signal extends React.Component {
       ctx.fill();
     }
 
+    for (const sl of g.spots) {
+      const lx = sl.tower.x, ly = sl.tower.y - 16;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(lx - 7, ly + 4, 1, 26); ctx.fillRect(lx + 6, ly + 4, 1, 26);       // legs
+      ctx.fillRect(lx - 9, ly + 2, 19, 3);                                            // platform
+      for (let yy = ly + 10; yy < ly + 30; yy += 6) ctx.fillRect(lx - 7, yy, 14, 1);  // braces
+      ctx.fillStyle = sl.dead ? '#5a5a5a' : '#e1232b'; ctx.fillRect(lx - 2, ly - 2, 5, 4);
+      if (sl.dead) continue;
+      const dx = sl.bx - lx, dy = sl.by - ly, L = Math.hypot(dx, dy);
+      ctx.fillStyle = '#e1232b';
+      for (let d2 = 6; d2 < L - sl.radius; d2 += 7) ctx.fillRect(Math.round(lx + dx / L * d2), Math.round(ly + dy / L * d2), 1, 1);
+      ctx.beginPath(); ctx.arc(sl.bx, sl.by, sl.radius, 0, Math.PI * 2);
+      ctx.fillStyle = sl.alarm > 0 ? this.pat.flash : this.pat.coneR; ctx.fill();
+      this.ring(ctx, sl.bx, sl.by, sl.radius, '#e1232b');
+    }
+
     for (const tr of g.trips) {
       if (tr.done || !vis(tr.x1, tr.y1)) continue;
-      ctx.fillStyle = '#ffffff';
+      const ug = g.inSewer;   // underground: thicker red so wires read inside the green beam
+      ctx.fillStyle = ug ? '#e1232b' : '#ffffff';
       ctx.fillRect(Math.round(tr.x1) - 1, Math.round(tr.y1) - 3, 2, 4);
       ctx.fillRect(Math.round(tr.x2) - 1, Math.round(tr.y2) - 3, 2, 4);
       const dx = tr.x2 - tr.x1, dy = tr.y2 - tr.y1, L = Math.hypot(dx, dy);
-      for (let d2 = 4; d2 < L - 4; d2 += 5) {
-        ctx.fillRect(Math.round(tr.x1 + dx / L * d2), Math.round(tr.y1 + dy / L * d2), 2, 1);
+      for (let d2 = 4; d2 < L - 4; d2 += ug ? 4 : 5) {
+        ctx.fillRect(Math.round(tr.x1 + dx / L * d2), Math.round(tr.y1 + dy / L * d2), 2, ug ? 2 : 1);
       }
     }
 
@@ -1309,6 +1522,13 @@ class Signal extends React.Component {
       if (g.hidden) ctx.globalAlpha = 0.45;
       this.drawPlayer(ctx, p, t);
       ctx.globalAlpha = 1;
+      const expo = g.spots.reduce((m2, sl) => Math.max(m2, sl.dead ? 0 : sl.exp), 0);
+      if (expo > 0 && !g.over) {
+        const ebx = Math.round(p.x) - 8, eby = Math.round(p.y) - 15;
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(ebx, eby, 17, 4);
+        ctx.fillStyle = '#000000'; ctx.fillRect(ebx + 1, eby + 1, 15, 2);
+        ctx.fillStyle = '#e1232b'; ctx.fillRect(ebx + 1, eby + 1, Math.round(15 * expo), 2);
+      }
       if (g.hidden) {
         ctx.fillStyle = '#ffffff';
         for (let a2 = 0; a2 < Math.PI * 2; a2 += 0.42) {
@@ -1325,7 +1545,16 @@ class Signal extends React.Component {
     }
 
     for (const pt of g.parts) { ctx.fillStyle = pt.c; ctx.fillRect(Math.round(pt.x), Math.round(pt.y), 2, 2); }
+    if (this.L.sewer && !g.inSewer) {
+      const z = this.L.sewer.zone;
+      ctx.fillStyle = '#000000'; ctx.fillRect(z.x, z.y + 26, z.w, z.h - 26);
+    }
     ctx.restore();
+
+    if (g.inSewer) {
+      this.drawDark(ctx);
+      if (g.ping) this.drawPing(ctx, sx, sy);
+    }
 
     for (const e of g.enemies) {
       if (e.dead || e.st === 'hide') continue;
@@ -1344,7 +1573,8 @@ class Signal extends React.Component {
         const d2 = Math.hypot(sp.x - p.x, sp.y - p.y);
         if (d2 < bo) { bo = d2; obj = sp; }
       }
-      const ojx = obj ? obj.x : this.L.tower.x, ojy = obj ? obj.y : this.L.tower.y;
+      let ojx = obj ? obj.x : this.L.tower.x, ojy = obj ? obj.y : this.L.tower.y;
+      if (g.inSewer && this.L.sewer) { ojx = this.L.sewer.exit.x; ojy = this.L.sewer.exit.y; }
       const exx = ojx - sx, eyy = ojy - sy;
       if ((exx < 0 || exx > V || eyy < 0 || eyy > V) && t % 1.1 < 0.72) {
         const cxx = Math.round(Math.max(4, Math.min(V - 7, exx))), cyy = Math.round(Math.max(4, Math.min(V - 7, eyy)));
@@ -1363,12 +1593,104 @@ class Signal extends React.Component {
       ctx.fillRect(0, 1, Math.round(V * Math.min(1, g.heat / 20)), 2);
     }
 
-    this.mist(ctx, t);
+    if (!g.inSewer) this.mist(ctx, t);
 
     if (g.flashT > 0) { ctx.fillStyle = this.pat.flash; ctx.fillRect(0, 0, V, V); }
 
     if (g.mapOn && this.state.started && !g.over) this.drawMinimap(ctx, t);
 
+  }
+
+  /* Underground darkness: per-pixel light (glow around the player + a cone where
+     they aim), quantised through the same 4x4 Bayer matrix as every other
+     dither in the game, so the falloff reads as a true pixel gradient. */
+  lightMask(px, py, aim) {
+    const V = this.V;
+    if (!this._mask) {
+      this._maskImg = new ImageData(V, V); this._mask = new Uint32Array(this._maskImg.data.buffer);
+      this._glowImg = new ImageData(V, V); this._glow = new Uint32Array(this._glowImg.data.buffer);
+    }
+    const m = this._mask, gl = this._glow, B = this._bayer || (this._bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]);
+    const BLACK = 0xff000000, CLEAR = 0, GLOW = 0xff3b8f2f;   // #2f8f3b, a dim green so white walls and traps pop
+    const ca = Math.cos(aim), sa = Math.sin(aim);
+    for (let y = 0; y < V; y++) {
+      const dy = y - py, row = y * V, by = (y & 3) * 4;
+      for (let x = 0; x < V; x++) {
+        const dx = x - px, d2 = dx * dx + dy * dy;
+        let I = 0;
+        if (d2 < 15876) {                                     // within 126px
+          const d = Math.sqrt(d2);
+          I = d < 12 ? 1 : Math.max(0, 1 - (d - 12) / 26);     // glow around the player
+          if (d > 4 && I < 1) {
+            const cosA = (dx * ca + dy * sa) / d;              // cone where they aim
+            if (cosA > 0.8) {
+              const ang = Math.max(0, Math.min(1, (cosA - 0.8) / 0.17));
+              const dist = d < 64 ? 1 : Math.max(0, 1 - (d - 64) / 62);
+              const c = ang * dist;
+              if (c > I) I = c;
+            }
+          }
+        }
+        const I16 = I * 16, b = B[by + (x & 3)];
+        const lit = I16 > b;
+        m[row + x] = lit ? CLEAR : BLACK;
+        gl[row + x] = lit && b < I16 * 0.4 ? GLOW : CLEAR;     // floor glow: ~6/16 dense at the core, thinning to 0
+      }
+    }
+    return this._maskImg;
+  }
+
+  /* Floor glow goes under the world objects; call before drawing them. */
+  drawGlow(ctx, px, py, aim) {
+    const V = this.V;
+    if (!this.glowC) { this.glowC = document.createElement('canvas'); this.glowC.width = V; this.glowC.height = V; this.glowCtx = this.glowC.getContext('2d'); }
+    this.lightMask(Math.round(px), Math.round(py), aim);
+    this.glowCtx.putImageData(this._glowImg, 0, 0);
+    ctx.drawImage(this.glowC, 0, 0);
+  }
+
+  /* Darkness goes over everything; reuses the mask computed by drawGlow this frame. */
+  drawDark(ctx) {
+    const V = this.V;
+    if (!this.darkC) { this.darkC = document.createElement('canvas'); this.darkC.width = V; this.darkC.height = V; this.darkCtx = this.darkC.getContext('2d'); }
+    this.darkCtx.putImageData(this._maskImg, 0, 0);
+    ctx.drawImage(this.darkC, 0, 0);
+  }
+
+  /* Ping: a ring sweeps out from where it was sent; walls and traps it has
+     passed are drawn over the darkness, then dither away over ~2 seconds. */
+  drawPing(ctx, sx, sy) {
+    const g = this.g, pg = g.ping, t = pg.t;
+    const r = Math.min(230, t * 260), fade = Math.max(0, 1 - t / 2.2);
+    const lvl = Math.max(1, Math.min(16, Math.round(fade * 16)));
+    const ox = pg.x - sx, oy = pg.y - sy;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = this.pat.gLv[lvl];
+    for (const w of g.walls) {
+      if (!w.sewer) continue;
+      const x = w.x - sx, y = w.y - sy;
+      if (x > this.V || y > this.V || x + w.w < 0 || y + w.h < 0) continue;
+      ctx.fillRect(x, y, w.w, 2); ctx.fillRect(x, y + w.h - 2, w.w, 2);
+      ctx.fillRect(x, y, 2, w.h); ctx.fillRect(x + w.w - 2, y, 2, w.h);
+    }
+    ctx.fillStyle = this.pat.rLv[lvl];
+    for (const mn of g.mines) if (!mn.done) ctx.fillRect(Math.round(mn.x - sx) - 2, Math.round(mn.y - sy) - 2, 5, 5);
+    for (const tr of g.trips) {
+      if (tr.done) continue;
+      const dx = tr.x2 - tr.x1, dy = tr.y2 - tr.y1, L = Math.hypot(dx, dy);
+      for (let d2 = 0; d2 < L; d2 += 4) ctx.fillRect(Math.round(tr.x1 + dx / L * d2 - sx), Math.round(tr.y1 + dy / L * d2 - sy), 2, 2);
+    }
+    for (const f of g.fires) ctx.fillRect(Math.round(f.x - sx) - 4, Math.round(f.y - sy) - 4, 9, 9);
+    ctx.restore();
+    if (r < 230) {
+      ctx.fillStyle = this.pat.gLv[Math.max(1, lvl)];
+      const n = Math.max(24, Math.round(r * 0.9));
+      for (let i = 0; i < n; i += 2) {
+        const a = i / n * Math.PI * 2;
+        ctx.fillRect(Math.round(ox + Math.cos(a) * r), Math.round(oy + Math.sin(a) * r), 2, 1);
+      }
+    }
   }
 
   drawMinimap(ctx, t) {
@@ -1570,6 +1892,7 @@ class Signal extends React.Component {
         break;
       }
       case 'static': this.noise(0.3, 0.12, 1500, 'bandpass'); break;
+      case 'ping': this.tone('sine', 1400, 700, 0.45, 0.12); this.tone('sine', 2100, 1050, 0.3, 0.05, 0.06); break;
     }
   }
 
@@ -1680,9 +2003,10 @@ class Signal extends React.Component {
     ] },
   ];
 
-  startObType(bi) {
+  startObType(bi) { this.typeLine(this.OB_BEATS[bi].line); }
+
+  typeLine(line) {
     if (this._obInt) clearInterval(this._obInt);
-    const line = this.OB_BEATS[bi].line;
     this.setState({ obText: '' });
     let i = 0;
     this._obInt = setInterval(() => {
@@ -1696,6 +2020,11 @@ class Signal extends React.Component {
     if (this.state.started) return;
     this.ensureAudio();
     const s = this.state.obStep;
+    if (s === 6) {
+      if (this._obInt) { clearInterval(this._obInt); this._obInt = null; this.setState({ obText: this.L.briefing.line }); }
+      else this.briefStart();
+      return;
+    }
     if ((s === 0 || s === 1) && this.state.obSeen) { this.startGame(); return; }
     if (s >= 2 && s <= 4 && this._obInt) {
       clearInterval(this._obInt); this._obInt = null;
@@ -1727,12 +2056,12 @@ class Signal extends React.Component {
 
   newRun = () => {
     this.ensureAudio();
-    this._cp = false; this._cpParts = null; this._deathAmmo = null;
+    this._cpIdx = -1; this._cpParts = null; this._deathAmmo = null;
     try { localStorage.removeItem(this.skey('save')); } catch (err) {}
     this.resetRun();
     this.buildStatic();
     this.sfx('static');
-    this.setState({ hasSave: false, parts: 0, ammo: 40, health: 4, kills: 0 });
+    this.setState({ hasSave: false, parts: 0, ammo: this.maxAmmo(), health: 4, kills: 0 });
   };
 
   obReplay = () => {
@@ -1747,6 +2076,48 @@ class Signal extends React.Component {
     this.ensureAudio();
     if (this._obInt) { clearInterval(this._obInt); this._obInt = null; }
     try { localStorage.setItem('thesignal_l1_onboarded', '1'); } catch (err) {}
+    if (this.needsBrief()) { this.showBrief(); return; }
+    this.beginRun();
+  };
+
+  /* Per-level briefing: shown the first time a level with a `briefing` is entered. */
+  needsBrief() {
+    if (!this.L.briefing) return false;
+    try { return !localStorage.getItem(this.skey('briefed')); } catch (err) { return false; }
+  }
+
+  showBrief() {
+    this.sfx('static');
+    this.setState({ started: false, complete: false, dead: false, obStep: 6 });
+    this.typeLine(this.L.briefing.line);
+  }
+
+  briefStart = () => {
+    try { localStorage.setItem(this.skey('briefed'), '1'); } catch (err) {}
+    if (this._obInt) { clearInterval(this._obInt); this._obInt = null; }
+    this.startGame();
+  };
+
+  /* Level map row: load that level (if different) and drop straight in. */
+  pickLevel = (id) => {
+    if (this.state.started || !this.isUnlocked(id)) return;
+    this.ensureAudio();
+    if (id === 1 && !this.state.obSeen) { this.obNext(); return; }
+    if (id !== this.L.id) this.loadLevel(id);
+    this.startGame();
+  };
+
+  /* Mission complete -> NEXT SECTOR: straight into the next level. */
+  goNext = () => {
+    const nx = this.nextLevel();
+    if (!nx) return;
+    this.ensureAudio();
+    this.loadLevel(nx.id);
+    if (this.needsBrief()) { this.showBrief(); return; }
+    this.beginRun();
+  };
+
+  beginRun() {
     this.g.fireHeld = false; this.g.tapShot = false; this.g.keys = {};
     this.setState({ started: true, hintOn: true, obSeen: true, markerHintDone: false });
     const hintGen = this._hintGen = (this._hintGen || 0) + 1;
@@ -1754,12 +2125,12 @@ class Signal extends React.Component {
     this._timers.push(setTimeout(() => this.startRadio(this.L.radio.start), 1000));
     this._timers.push(setTimeout(() => this.setState({ hintOn: false }), 6200));
     this._timers.push(setTimeout(() => { if (this._hintGen === hintGen) this.setState({ markerHintDone: true }); }, 13200));
-  };
+  }
 
   saveRun() {
     try {
-      if (this._cp || (this._cpParts && this._cpParts.some(Boolean))) {
-        localStorage.setItem(this.skey('save'), JSON.stringify({ cp: !!this._cp, parts: this._cpParts || [], ammo: this.state.ammo }));
+      if (this._cpIdx >= 0 || (this._cpParts && this._cpParts.some(Boolean))) {
+        localStorage.setItem(this.skey('save'), JSON.stringify({ cp: this._cpIdx, parts: this._cpParts || [], ammo: this.state.ammo }));
       } else {
         localStorage.removeItem(this.skey('save'));
       }
@@ -1775,7 +2146,7 @@ class Signal extends React.Component {
 
   exitToMenu = () => {
     if (!this.state.started) return;
-    if (this.state.complete) { this._cp = false; this._deathAmmo = null; this._cpParts = null; }
+    if (this.state.complete) { this._cpIdx = -1; this._deathAmmo = null; this._cpParts = null; }
     else { this._deathAmmo = this.state.ammo; }
     this.saveRun();
     if (this._radioInt) { clearInterval(this._radioInt); this._radioInt = null; }
@@ -1784,8 +2155,8 @@ class Signal extends React.Component {
     this.buildStatic();
     this.sfx('static');
     this.setState({
-      started: false, obStep: 0, hasSave: !!this._cp,
-      health: 4, ammo: (this._cp && this._deathAmmo != null) ? this._deathAmmo : 40,
+      started: false, obStep: 0, hasSave: this._cpIdx >= 0,
+      health: 4, ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
       kills: 0, dead: false, complete: false, hunted: false, hiddenOn: false,
       radioOn: false, hintOn: false, fixText: '',
       parts: this.g.sparts.filter((s2) => s2.taken).length,
@@ -1794,12 +2165,12 @@ class Signal extends React.Component {
 
   restart = () => {
     if (!this.state.started) return;
-    if (this.state.complete) { this._cp = false; this._deathAmmo = null; this._cpParts = null; }
+    if (this.state.complete) { this._cpIdx = -1; this._deathAmmo = null; this._cpParts = null; }
     this.resetRun();
     this.buildStatic();
     this.setState({
       health: 4,
-      ammo: (this._cp && this._deathAmmo != null) ? this._deathAmmo : 40,
+      ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
       kills: 0, dead: false, complete: false, hunted: false,
       parts: this.g.sparts.filter((s2) => s2.taken).length, fixText: '',
     });
@@ -1865,7 +2236,10 @@ class Signal extends React.Component {
       diffDesc: this.state.diffHard ? 'FASTER PATROLS. SCARCE AMMO. RELENTLESS HUNTS.' : 'STANDARD PATROLS. FAIR SCAVENGE.',
       radioOn: this.state.radioOn, radioText: this.state.radioText,
       hintOn: this.state.hintOn,
-      markerHintOn: this.state.started && !this.state.hintOn && !this.state.markerHintDone && !this.state.fixText && this.state.parts === 0 && !this.state.dead && !this.state.complete,
+      sewerHintOn: this.state.started && !!this.state.inSewer && !this.state.hintOn && !this.state.fixText && !this.state.dead,
+      markerHintOn: this.state.started && !this.state.inSewer && !this.state.hintOn && !this.state.markerHintDone && !this.state.fixText && this.state.parts === 0 && !this.state.dead && !this.state.complete,
+      sewerHintText: this.tm() ? 'NO SHOT · FIRE TO PING · FIND THE LADDER' : 'NO SHOT · CLICK TO PING · FIND THE LADDER',
+      fireLabel: this.state.inSewer ? 'PING' : 'FIRE',
       markerHintText: this.tm() ? 'FOLLOW THE WHITE MARKERS' : 'FOLLOW THE WHITE MARKERS · [TAB] MAP',
       hintText: this.tm() ? 'STICK — MOVE + AIM · FIRE — SHOOT' : 'WASD MOVE · MOUSE AIM · CLICK FIRE',
       isTouch: this.tm(), isDesktop: !this.tm(),
@@ -1887,20 +2261,18 @@ class Signal extends React.Component {
       focusPause: !!this.state.focusPause && !this.state.dead && !this.state.complete,
       obTitleBtn: this.state.obSeen ? (this.state.hasSave ? 'CONTINUE ▸' : 'START MISSION') : 'BEGIN ▸',
       obMapBtn: this.state.obSeen ? (this.state.hasSave ? 'CONTINUE LVL ' + this.L.num + ' ▸' : 'START LVL ' + this.L.num + ' ▸') : 'NEXT ▸',
+      nextSector: !!this.nextLevel(), goNext: this.goNext,
       levels: this.state.started ? [] : [
-        { n: '06', name: 'THE SIGNAL' },
-        { n: '05', name: "SNIPER'S MILE" },
-        { n: '04', name: 'THE FOG' },
-        { n: '03', name: 'THE PACK' },
-        { n: '02', name: 'THE RUINS' },
-        { n: '01', name: 'FIRST LIGHT', open: true },
+        ...PLANNED.map((d) => ({ num: d.num, name: d.name, id: null })).reverse(),
+        ...LEVELS.map((l) => ({ num: l.num, name: l.name, id: l.id })).reverse(),
       ].map((d) => {
-        const open = !!d.open;
-        const cleared = open && this.state.l1Cleared;
+        const open = d.id != null && this.isUnlocked(d.id);
+        const cleared = open && !!this.state.cleared[d.id];
+        const inProg = open && !cleared && (d.id === this.L.id ? this.state.hasSave : this.hasSaveFor(d.id));
         return {
-          num: d.n, name: d.name,
-          status: open ? (cleared ? 'CLEARED ▸' : (this.state.hasSave ? 'IN PROGRESS ▸' : 'READY ▸')) : 'LOCKED',
-          click: open ? this.obNext : undefined,
+          num: d.num, name: d.name,
+          status: open ? (cleared ? 'CLEARED ▸' : (inProg ? 'IN PROGRESS ▸' : 'READY ▸')) : 'LOCKED',
+          click: open ? () => this.pickLevel(d.id) : undefined,
           rowStyle: { position: 'relative', display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px', width: 'min(300px, 82vw)', boxSizing: 'border-box', cursor: open ? 'pointer' : 'default', border: '1px solid ' + (open ? (cleared ? '#e1232b' : '#ffffff') : '#2a2a2a'), background: '#000000' },
           nodeStyle: { width: '12px', height: '12px', boxSizing: 'border-box', flexShrink: 0, border: '2px solid ' + (open ? '#ffffff' : '#3a3a3a'), background: cleared ? '#e1232b' : '#000000', animation: open && !cleared ? 'sigblink 1.1s steps(1) infinite' : 'none' },
           numStyle: { fontFamily: "'VT323',monospace", fontSize: '17px', color: open ? '#e1232b' : '#3a3a3a', width: '24px', flexShrink: 0 },
@@ -1908,7 +2280,14 @@ class Signal extends React.Component {
           statusStyle: { fontFamily: "'VT323',monospace", fontSize: '15px', color: open ? (cleared ? '#e1232b' : '#8a8a8a') : '#3a3a3a', flexShrink: 0 },
         };
       }),
-      obDotsOn: !this.state.obSeen || this.state.obStep > 0,
+      obBrief: this.state.obStep === 6 && !!this.L.briefing,
+      briefLabel: this.L.briefing ? this.L.briefing.label : '',
+      briefStart: this.briefStart,
+      briefBody: !this.L.briefing || this.state.started ? [] : this.L.briefing.body.map((b) => ({
+        text: b.t,
+        style: { fontFamily: "'VT323',monospace", fontSize: '19px', lineHeight: '1.4', color: b.red ? '#e1232b' : '#8a8a8a', marginTop: b.red ? '18px' : '0', textAlign: 'left' },
+      })),
+      obDotsOn: (!this.state.obSeen || this.state.obStep > 0) && this.state.obStep !== 6,
       obDots: this.state.started ? [] : [0, 1, 2, 3, 4, 5].map((i) => ({ style: { width: '8px', height: '8px', boxSizing: 'border-box', background: i === this.state.obStep ? '#ffffff' : 'transparent', border: '1px solid ' + (i === this.state.obStep ? '#ffffff' : '#5a5a5a') } })),
       landscapeBlock: this.state.landscapeBlock,
       statTime: this.state.statTime, statShots: this.state.statShots, statAcc: this.state.statAcc,
@@ -1972,6 +2351,7 @@ class Signal extends React.Component {
           {/* ---------- PLAYFIELD ---------- */}
           <div style={css("position:relative;width:100%;aspect-ratio:1 / 1;border:1px solid #ffffff;box-sizing:border-box;background:#000000")}>
             <canvas ref={this.canvasRef} width="240" height="240" style={css(CANVAS_CSS)} />
+            {this._debug && <div ref={this.dbgRef} style={css("position:absolute;left:6px;top:40px;background:#000000;color:#ffffff;border:1px solid #e1232b;padding:2px 6px;font-family:'VT323',monospace;font-size:14px;pointer-events:none")} />}
   
             {v.hintOn && (
               <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
@@ -1979,6 +2359,12 @@ class Signal extends React.Component {
               </div>
             )}
   
+            {v.sewerHintOn && (
+              <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
+                <div style={css("background:#e8c84a;color:#000000;padding:4px 12px;font-family:'VT323',monospace;font-size:16px;letter-spacing:1px")}>{v.sewerHintText}</div>
+              </div>
+            )}
+
             {v.markerHintOn && (
               <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
                 <div style={css("background:#e8c84a;color:#000000;padding:4px 12px;font-family:'VT323',monospace;font-size:16px;letter-spacing:1px")}>{v.markerHintText}</div>
@@ -2030,7 +2416,10 @@ class Signal extends React.Component {
                     <div>SHOTS — {v.statShots}</div>
                     <div>ACCURACY — {v.statAcc}</div>
                   </div>
-                  <div style={css("font-family:'VT323',monospace;font-size:16px;color:#e1232b;margin-top:6px")}>TAP TO GO AGAIN</div>
+                  {v.nextSector && (
+                    <button onClick={(e) => { e.stopPropagation(); v.goNext(); }} style={css("margin-top:8px;background:#ffffff;border:2px solid #ffffff;color:#000000;font-family:'Silkscreen',monospace;font-size:11px;font-weight:700;letter-spacing:3px;padding:11px 20px;cursor:pointer")}>NEXT SECTOR ▸</button>
+                  )}
+                  <div style={css("font-family:'VT323',monospace;font-size:16px;color:#e1232b;margin-top:6px")}>{v.nextSector ? 'OR TAP TO GO AGAIN' : 'TAP TO GO AGAIN'}</div>
                 </div>
               </div>
             )}
@@ -2075,7 +2464,7 @@ class Signal extends React.Component {
               onTouchCancel={v.fireUp}
               style={css("position:relative;flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px")}
             >
-              <div ref={this.fireBtnRef} style={css("width:112px;height:112px;border:2px solid #ffffff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'VT323',monospace;font-size:30px;letter-spacing:4px;color:#ffffff;box-sizing:border-box;background:#000000;pointer-events:none;padding-left:4px")}>FIRE</div>
+              <div ref={this.fireBtnRef} style={css("width:112px;height:112px;border:2px solid #ffffff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'VT323',monospace;font-size:30px;letter-spacing:4px;color:#ffffff;box-sizing:border-box;background:#000000;pointer-events:none;padding-left:4px")}>{v.fireLabel}</div>
               <div style={css("font-family:'VT323',monospace;font-size:14px;color:#8a8a8a;letter-spacing:3px;pointer-events:none")}>HOLD = AUTO</div>
             </div>
           </div>
@@ -2217,6 +2606,45 @@ class Signal extends React.Component {
                     base="background:#000000;border:2px solid #ffffff;color:#ffffff;font-family:'Silkscreen',monospace;font-size:11px;font-weight:700;letter-spacing:3px;padding:13px 24px;cursor:pointer"
                     hover="background:#ffffff;color:#000000"
                   >NEXT ▸</Btn>
+                </div>
+              </React.Fragment>
+            )}
+
+            {/* --- level briefing --- */}
+            {v.obBrief && (
+              <React.Fragment>
+                <div style={css("position:absolute;top:calc(9vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(400px, calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-start;text-align:left")}>
+                  <div style={css("height:64px;display:flex;align-items:flex-end;margin-bottom:32px")}>
+                    <div style={css("position:relative;width:40px;height:62px")}>
+                      <div style={css("position:absolute;left:50%;top:6px;width:8px;height:6px;margin-left:-4px;background:#e1232b;animation:sigblink 1.1s steps(1) infinite")} />
+                      <div style={css("position:absolute;left:50%;top:14px;width:30px;height:3px;margin-left:-15px;background:#ffffff")} />
+                      <div style={css("position:absolute;left:8px;top:17px;width:2px;height:45px;background:#ffffff")} />
+                      <div style={css("position:absolute;right:8px;top:17px;width:2px;height:45px;background:#ffffff")} />
+                      <div style={css("position:absolute;left:8px;top:30px;width:24px;height:2px;background:#ffffff")} />
+                      <div style={css("position:absolute;left:8px;top:45px;width:24px;height:2px;background:#ffffff")} />
+                    </div>
+                  </div>
+
+                  <div style={css("font-family:'VT323',monospace;font-size:15px;line-height:1;color:#e1232b;letter-spacing:3px")}>{v.briefLabel}</div>
+
+                  <div style={css("font-family:'VT323',monospace;font-size:30px;line-height:1.15;color:#ffffff;margin-top:14px;min-height:69px")}>
+                    {v.obText}
+                    <span style={css("animation:sigblink 0.8s steps(1) infinite")}>_</span>
+                  </div>
+
+                  <div style={css("width:32px;height:2px;background:#3a3a3a;margin:28px 0")} />
+
+                  <div style={css("display:flex;flex-direction:column;gap:6px")}>
+                    {v.briefBody.map((bl, i) => <div key={i} style={css(bl.style)}>{bl.text}</div>)}
+                  </div>
+                </div>
+
+                <div style={css("position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));width:min(400px, calc(100vw - 48px));display:flex")}>
+                  <Btn
+                    onClick={v.briefStart}
+                    base="background:#ffffff;border:2px solid #ffffff;color:#000000;font-family:'Silkscreen',monospace;font-size:11px;font-weight:700;letter-spacing:3px;padding:13px 24px;cursor:pointer"
+                    hover="background:#000000;color:#ffffff"
+                  >START ▸</Btn>
                 </div>
               </React.Fragment>
             )}
