@@ -2260,7 +2260,7 @@ class Signal extends React.Component {
             {/* --- story beats --- */}
             {v.obStory && (
               <React.Fragment>
-                <div style={css("position:absolute;top:calc(13vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(400px, calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-start;text-align:left")}>
+                <div style={css("position:absolute;top:calc(9vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(400px, calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-start;text-align:left")}>
 
                   <div style={css("height:64px;display:flex;align-items:flex-end;margin-bottom:32px")}>
                     {v.obVis1 && (
@@ -2330,7 +2330,7 @@ class Signal extends React.Component {
 
                   <div style={css("font-family:'VT323',monospace;font-size:30px;line-height:1.15;color:#ffffff;margin-top:14px")}>SALVAGE 3 PARTS ▸ REPAIR THE TOWER</div>
 
-                  <div style={css("width:32px;height:2px;background:#3a3a3a;margin:24px 0")} />
+                  <div style={css("width:32px;height:2px;background:#3a3a3a;margin:20px 0")} />
 
                   <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin-bottom:8px")}>CONTROLS</div>
                   {v.isDesktop && (
