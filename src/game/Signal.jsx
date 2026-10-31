@@ -2323,54 +2323,58 @@ class Signal extends React.Component {
   
             {/* --- field manual / difficulty --- */}
             {v.obControls && (
-              <div style={css("display:flex;flex-direction:column;align-items:center")}>
-                <div style={css("font-family:'VT323',monospace;font-size:16px;color:#8a8a8a;letter-spacing:4px")}>FIELD MANUAL</div>
-  
-                {v.isDesktop && (
-                  <div style={css("display:flex;flex-direction:column;gap:7px;margin-top:18px;font-family:'VT323',monospace;font-size:20px;color:#d6d6d6;border:1px solid #3a3a3a;padding:16px 26px;text-align:left")}>
-                    <div><span style={css("color:#ffffff")}>WASD</span> — MOVE</div>
-                    <div><span style={css("color:#ffffff")}>MOUSE</span> — AIM</div>
-                    <div><span style={css("color:#ffffff")}>CLICK / SPACE</span> — FIRE</div>
-                    <div><span style={css("color:#ffffff")}>[M]</span> SOUND · <span style={css("color:#ffffff")}>[R]</span> RETRY</div>
-                  </div>
-                )}
-  
-                {v.isTouch && (
-                  <React.Fragment>
-                    <div style={css("display:flex;gap:30px;margin-top:18px;align-items:flex-start")}>
-                      <div style={css("display:flex;flex-direction:column;align-items:center;gap:7px")}>
-                        <div style={css("width:66px;height:66px;border:2px solid #ffffff;border-radius:50%;position:relative;box-sizing:border-box")}>
-                          <div style={css("position:absolute;left:50%;top:50%;width:26px;height:26px;margin-left:-13px;margin-top:-13px;background:#ffffff;border-radius:50%")} />
-                        </div>
-                        <div style={css("font-family:'VT323',monospace;font-size:16px;color:#d6d6d6")}>MOVE + AIM</div>
-                      </div>
-                      <div style={css("display:flex;flex-direction:column;align-items:center;gap:7px")}>
-                        <div style={css("width:66px;height:66px;border:2px solid #ffffff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'VT323',monospace;font-size:19px;letter-spacing:2px;box-sizing:border-box")}>FIRE</div>
-                        <div style={css("font-family:'VT323',monospace;font-size:16px;color:#d6d6d6")}>TAP · HOLD = AUTO</div>
-                      </div>
+              <React.Fragment>
+                <div style={css("position:absolute;top:calc(13vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(400px, calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-start;text-align:left")}>
+
+                  <div style={css("font-family:'VT323',monospace;font-size:15px;line-height:1;color:#e1232b;letter-spacing:3px")}>FIELD MANUAL</div>
+
+                  <div style={css("font-family:'VT323',monospace;font-size:30px;line-height:1.15;color:#ffffff;margin-top:14px")}>SALVAGE 3 PARTS ▸ REPAIR THE TOWER</div>
+
+                  <div style={css("width:32px;height:2px;background:#3a3a3a;margin:24px 0")} />
+
+                  <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin-bottom:8px")}>CONTROLS</div>
+                  {v.isDesktop && (
+                    <div style={css("display:grid;grid-template-columns:130px 1fr;row-gap:4px;font-family:'VT323',monospace;font-size:19px;line-height:1.3")}>
+                      <div style={css("color:#ffffff")}>WASD</div><div style={css("color:#8a8a8a")}>MOVE</div>
+                      <div style={css("color:#ffffff")}>MOUSE</div><div style={css("color:#8a8a8a")}>AIM</div>
+                      <div style={css("color:#ffffff")}>CLICK / SPACE</div><div style={css("color:#8a8a8a")}>FIRE</div>
+                      <div style={css("color:#ffffff")}>TAB</div><div style={css("color:#8a8a8a")}>MAP</div>
+                      <div style={css("color:#ffffff")}>M · R</div><div style={css("color:#8a8a8a")}>SOUND · RETRY</div>
                     </div>
-                    <div style={css("font-family:'VT323',monospace;font-size:17px;color:#9a9a9a;margin-top:14px")}>YOU AIM WHERE YOU WALK. THE GUN SNAPS TO TARGETS.</div>
-                  </React.Fragment>
-                )}
-  
-                <div style={css("font-family:'VT323',monospace;font-size:17px;color:#ffffff;margin-top:14px")}>OBJECTIVE — SALVAGE 3 PARTS ▸ REPAIR THE TOWER</div>
-                <div style={css("font-family:'VT323',monospace;font-size:17px;color:#9a9a9a;margin-top:4px")}>SALVAGING IS LOUD. GREEN BRUSH HIDES YOU.</div>
-                <div style={css("font-family:'VT323',monospace;font-size:17px;color:#e1232b;margin-top:8px")}>RED CONES SEE YOU. GUNFIRE CARRIES.</div>
-                <div style={css("font-family:'VT323',monospace;font-size:17px;color:#ffffff;margin-top:10px")}>EVERY 3 KILLS ▸ TRI-SHOT FOR 5 SECONDS</div>
-  
-                <div style={css("font-family:'VT323',monospace;font-size:16px;color:#8a8a8a;letter-spacing:4px;margin-top:22px")}>DIFFICULTY</div>
-                <div style={css("display:flex;gap:10px;margin-top:10px")}>
-                  <button onClick={v.setRecruit} style={css(v.recruitStyle)}>RECRUIT</button>
-                  <button onClick={v.setVeteran} style={css(v.veteranStyle)}>VETERAN</button>
+                  )}
+                  {v.isTouch && (
+                    <div style={css("display:grid;grid-template-columns:130px 1fr;row-gap:4px;font-family:'VT323',monospace;font-size:19px;line-height:1.3")}>
+                      <div style={css("color:#ffffff")}>LEFT STICK</div><div style={css("color:#8a8a8a")}>MOVE + AIM</div>
+                      <div style={css("color:#ffffff")}>FIRE</div><div style={css("color:#8a8a8a")}>TAP · HOLD = AUTO</div>
+                    </div>
+                  )}
+                  {v.isTouch && (
+                    <div style={css("font-family:'VT323',monospace;font-size:19px;line-height:1.3;color:#5a5a5a;margin-top:6px")}>YOU AIM WHERE YOU WALK. THE GUN SNAPS TO TARGETS.</div>
+                  )}
+
+                  <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin:24px 0 8px")}>RULES</div>
+                  <div style={css("display:flex;flex-direction:column;gap:4px;font-family:'VT323',monospace;font-size:19px;line-height:1.3")}>
+                    <div style={css("color:#8a8a8a")}>SALVAGING IS LOUD. GREEN BRUSH HIDES YOU.</div>
+                    <div style={css("color:#8a8a8a")}>EVERY 3 KILLS ▸ TRI-SHOT FOR 5 SECONDS.</div>
+                    <div style={css("color:#e1232b")}>RED CONES SEE YOU. GUNFIRE CARRIES.</div>
+                  </div>
+
+                  <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin:24px 0 10px")}>DIFFICULTY</div>
+                  <div style={css("display:flex;gap:10px")}>
+                    <button onClick={v.setRecruit} style={css(v.recruitStyle)}>RECRUIT</button>
+                    <button onClick={v.setVeteran} style={css(v.veteranStyle)}>VETERAN</button>
+                  </div>
+                  <div style={css("font-family:'VT323',monospace;font-size:17px;color:#5a5a5a;margin-top:8px")}>{v.diffDesc}</div>
                 </div>
-                <div style={css("font-family:'VT323',monospace;font-size:16px;color:#8a8a8a;margin-top:8px")}>{v.diffDesc}</div>
-  
-                <Btn
-                  onClick={v.startGame}
-                  base="margin-top:24px;background:#000000;border:2px solid #ffffff;color:#ffffff;font-family:'Silkscreen',monospace;font-size:12px;font-weight:700;letter-spacing:3px;padding:15px 28px;cursor:pointer"
-                  hover="background:#ffffff;color:#000000"
-                >START MISSION</Btn>
-              </div>
+
+                <div style={css("position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));width:min(400px, calc(100vw - 48px));display:flex")}>
+                  <Btn
+                    onClick={v.startGame}
+                    base="background:#ffffff;border:2px solid #ffffff;color:#000000;font-family:'Silkscreen',monospace;font-size:11px;font-weight:700;letter-spacing:3px;padding:13px 24px;cursor:pointer"
+                    hover="background:#000000;color:#ffffff"
+                  >START MISSION ▸</Btn>
+                </div>
+              </React.Fragment>
             )}
   
             {v.obTitle && (
