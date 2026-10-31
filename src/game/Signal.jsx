@@ -1,5 +1,5 @@
 import React from 'react';
-
+import { levelById } from './levels.js';
 const _cssCache = new Map();
 
 function css(s) {
@@ -44,7 +44,6 @@ function Btn({ base, hover, children, ...rest }) {
 
 /* The canvas cursor, kept as one string so its quoting can't get mangled. */
 const CANVAS_CSS = `width:100%;height:100%;display:block;image-rendering:pixelated;cursor:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2217%22 height=%2217%22><g fill=%22%23000%22><rect x=%220%22 y=%226%22 width=%227%22 height=%225%22/><rect x=%2210%22 y=%226%22 width=%227%22 height=%225%22/><rect x=%226%22 y=%220%22 width=%225%22 height=%227%22/><rect x=%226%22 y=%2210%22 width=%225%22 height=%227%22/></g><g fill=%22%23fff%22><rect x=%221%22 y=%228%22 width=%225%22 height=%221%22/><rect x=%2211%22 y=%228%22 width=%225%22 height=%221%22/><rect x=%228%22 y=%221%22 width=%221%22 height=%225%22/><rect x=%228%22 y=%2211%22 width=%221%22 height=%225%22/></g></svg>') 8 8, crosshair`;
-
 class Signal extends React.Component {
   canvasRef = React.createRef();
   padRef = React.createRef();
@@ -66,12 +65,19 @@ class Signal extends React.Component {
     hintOn: false, hunted: false, parts: 0, fixText: '', hiddenOn: false, rapidSec: 0, diffHard: false,
     started: false, obStep: 0, obText: '', obSeen: false, landscapeBlock: false, l1Cleared: false, hasSave: false,
     statTime: '0:00', statShots: '0', statAcc: '0%',
+    levelId: 1,
   };
+
+  /* Current level's data (src/game/levels.js). */
+  get L() { return levelById(this.state ? this.state.levelId : 1); }
+
+  /* Per-level localStorage key, e.g. thesignal_l1_save. */
+  skey(suffix) { return 'thesignal_l' + this.L.id + '_' + suffix; }
 
   componentDidMount() {
     if (this._booted) return;
     this._booted = true;
-    this.V = 240; this.W = 840; this.H = 3400;
+    this.V = 240; this.W = this.L.W; this.H = this.L.H;
     const cv = this.canvasRef.current;
     this.ctx = cv.getContext('2d');
     this.ctx.imageSmoothingEnabled = false;
@@ -96,7 +102,7 @@ class Signal extends React.Component {
     this.buildPatterns();
     this.g = {};
     try {
-      const sv = JSON.parse(localStorage.getItem('thesignal_l1_save') || 'null');
+      const sv = JSON.parse(localStorage.getItem(this.skey('save')) || 'null');
       if (sv) {
         this._cp = !!sv.cp;
         this._cpParts = sv.parts || null;
@@ -150,7 +156,7 @@ class Signal extends React.Component {
     let seen = false, cleared = false;
     try {
       seen = !!localStorage.getItem('thesignal_l1_onboarded');
-      cleared = !!localStorage.getItem('thesignal_l1_cleared');
+      cleared = !!localStorage.getItem(this.skey('cleared'));
       if (localStorage.getItem('thesignal_diff') === 'vet') this.setState({ diffHard: true });
     } catch (err) {}
     if (seen || cleared) this.setState({ obSeen: seen, l1Cleared: cleared });
@@ -234,147 +240,35 @@ class Signal extends React.Component {
   }
 
   resetRun() {
-    const g = this.g;
-    g.player = { x: this._cp ? 600 : 420, y: this._cp ? 1555 : 3320, aim: -Math.PI / 2, fireCd: 0, iframes: 0 };
-    g.walls = [
-      { x: 0,   y: 2950, w: 330, h: 26 },
-      { x: 510, y: 2950, w: 330, h: 26 },
-      { x: 400, y: 2250, w: 30,  h: 500 },
-      { x: 430, y: 2250, w: 410, h: 26 },
-      { x: 0,   y: 2250, w: 170, h: 26 },
-      { x: 300, y: 1950, w: 540, h: 26 },
-      { x: 0,   y: 1600, w: 540, h: 26 },
-      { x: 400, y: 950,  w: 30,  h: 500 },
-      { x: 0,   y: 950,  w: 400, h: 26 },
-      { x: 200, y: 600,  w: 420, h: 26 },
-    ];
-    g.enemies = [
-      { p1: { x: 350, y: 3040 }, p2: { x: 490, y: 3040 } },
-      { p1: { x: 100, y: 2500 }, p2: { x: 360, y: 2500 } },
-      { p1: { x: 610, y: 2360 }, p2: { x: 610, y: 2650 } },
-      { p1: { x: 60,  y: 2100 }, p2: { x: 340, y: 2100 } },
-      { p1: { x: 80,  y: 1700 }, p2: { x: 520, y: 1700 } },
-      { p1: { x: 640, y: 1420 }, p2: { x: 640, y: 1080 } },
-      { p1: { x: 110, y: 1200 }, p2: { x: 330, y: 1200 } },
-      { p1: { x: 250, y: 810 },  p2: { x: 590, y: 810 } },
-      { p1: { x: 120, y: 450 },  p2: { x: 300, y: 450 } },
-      { p1: { x: 540, y: 450 },  p2: { x: 720, y: 450 } },
-      { p1: { x: 330, y: 1875 }, p2: { x: 545, y: 1875 } },
-      { p1: { x: 645, y: 660 },  p2: { x: 645, y: 845 } },
-      { p1: { x: 285, y: 2210 }, p2: { x: 285, y: 2210 }, f0: Math.PI / 2 },
-      { p1: { x: 150, y: 1915 }, p2: { x: 150, y: 1915 }, f0: Math.PI / 2 },
-      { p1: { x: 690, y: 1565 }, p2: { x: 690, y: 1565 }, f0: Math.PI / 2 },
-      { p1: { x: 100, y: 565 },  p2: { x: 100, y: 565 },  f0: Math.PI / 2 },
-      { p1: { x: 730, y: 565 },  p2: { x: 730, y: 565 },  f0: Math.PI / 2 },
-      { p1: { x: 700, y: 2050 }, p2: { x: 700, y: 2050 }, h: 1 },
-      { p1: { x: 620, y: 1500 }, p2: { x: 620, y: 1500 }, h: 1 },
-      { p1: { x: 180, y: 870 },  p2: { x: 180, y: 870 },  h: 1 },
-      { p1: { x: 660, y: 700 },  p2: { x: 660, y: 700 },  h: 1 },
-      { p1: { x: 420, y: 385 },  p2: { x: 420, y: 385 },  h: 1 },
-      { p1: { x: 800, y: 1740 }, p2: { x: 800, y: 1740 }, sn: 1, f0: Math.PI },
-      { p1: { x: 60,  y: 1180 }, p2: { x: 60,  y: 1180 }, sn: 1, f0: 0 },
-      { p1: { x: 418, y: 130 },  p2: { x: 418, y: 130 },  sn: 1, f0: Math.PI / 2 },
-      { p1: { x: 560, y: 300 },  p2: { x: 700, y: 300 } },
-      { p1: { x: 760, y: 2295 }, p2: { x: 760, y: 2295 }, f0: Math.PI / 2 },
-      { p1: { x: 150, y: 1035 }, p2: { x: 150, y: 1035 }, f0: Math.PI },
-      { p1: { x: 365, y: 745 },  p2: { x: 365, y: 745 },  f0: 0 },
-      { p1: { x: 640, y: 1610 }, p2: { x: 640, y: 1610 }, h: 1 },
-      { p1: { x: 700, y: 1500 }, p2: { x: 700, y: 1500 }, f0: Math.PI / 2 },
-      { p1: { x: 330, y: 900 },  p2: { x: 330, y: 900 },  h: 1 },
-      { p1: { x: 550, y: 860 },  p2: { x: 550, y: 860 },  h: 1 },
-      { p1: { x: 240, y: 520 },  p2: { x: 240, y: 520 },  h: 1 },
-      { p1: { x: 600, y: 380 },  p2: { x: 600, y: 380 },  h: 1 },
-      { p1: { x: 320, y: 300 },  p2: { x: 320, y: 300 },  h: 1 },
-      { p1: { x: 740, y: 340 },  p2: { x: 740, y: 340 },  h: 1 },
-      { p1: { x: 790, y: 900 },  p2: { x: 790, y: 900 },  sn: 1, f0: Math.PI },
-      { p1: { x: 60,  y: 300 },  p2: { x: 60,  y: 300 },  sn: 1, f0: 0 },
-      { p1: { x: 470, y: 540 },  p2: { x: 470, y: 540 },  h: 1, ru: 1 },
-      { p1: { x: 180, y: 380 },  p2: { x: 180, y: 380 },  h: 1, ru: 1 },
-      { p1: { x: 250, y: 700 },  p2: { x: 120, y: 760 },  ru: 1 },
-      { p1: { x: 500, y: 180 },  p2: { x: 650, y: 240 },  ru: 1 },
-      { p1: { x: 240, y: 500 },  p2: { x: 420, y: 500 } },
-      { p1: { x: 100, y: 150 },  p2: { x: 300, y: 150 } },
-      { p1: { x: 700, y: 140 },  p2: { x: 560, y: 90 } },
-      { p1: { x: 500, y: 1150 }, p2: { x: 700, y: 1150 } },
-      { p1: { x: 480, y: 1350 }, p2: { x: 760, y: 1420 } },
-      { p1: { x: 520, y: 1080 }, p2: { x: 520, y: 1080 }, h: 1 },
-      { p1: { x: 700, y: 1300 }, p2: { x: 700, y: 1300 }, h: 1 },
-      { p1: { x: 470, y: 1010 }, p2: { x: 470, y: 1010 }, f0: Math.PI / 2 },
-      { p1: { x: 60,  y: 1750 }, p2: { x: 60,  y: 1750 }, sn: 1, f0: 0 },
-      { p1: { x: 600, y: 1850 }, p2: { x: 750, y: 1850 } },
-      { p1: { x: 350, y: 1700 }, p2: { x: 350, y: 1700 }, h: 1 },
-      { p1: { x: 150, y: 1450 }, p2: { x: 320, y: 1500 }, ru: 1 },
-      { p1: { x: 620, y: 2680 }, p2: { x: 620, y: 2680 }, f0: Math.PI },
-    ].map((d, i) => ({
-      x: d.p1.x, y: d.p1.y, p1: d.p1, p2: d.p2, tgt: d.p2,
-      sentry: d.p1.x === d.p2.x && d.p1.y === d.p2.y,
-      sniper: !!d.sn, rusher: !!d.ru, rngCur: d.sn ? 200 : (d.ru ? 90 : 105),
-      bN: [2, 3, 5][i % 3], bPause: [0.8, 1.15, 1.6][i % 3],
-      face0: d.f0 || 0, ph: i * 1.7,
-      face: d.f0 || 0, st: d.h ? 'hide' : 'patrol', hp: d.ru ? 1 : 2, dead: false,
-      alertT: 0, fireCd: 0, waitT: 0, searchT: 0, muzzle: 0, lk: null,
-    }));
-    g.trips = [
-      { x1: 332, y1: 2890, x2: 440, y2: 2890, done: false },
-      { x1: 30,  y1: 1965, x2: 270, y2: 1965, done: false },
-      { x1: 560, y1: 1615, x2: 810, y2: 1615, done: false },
-    ];
-    g.mines = [
-      { x: 600, y: 2350 }, { x: 700, y: 2430 }, { x: 520, y: 2550 },
-      { x: 150, y: 1050 }, { x: 240, y: 1130 }, { x: 90,  y: 1180 },
-      { x: 300, y: 480 },  { x: 385, y: 520 },  { x: 470, y: 420 },
-      { x: 545, y: 490 },  { x: 350, y: 360 },  { x: 500, y: 330 },
-    ].map((m) => ({ x: m.x, y: m.y, done: false }));
-    g.meds = [
-      { x: 760, y: 2320, taken: false },
-      { x: 90,  y: 1010, taken: false },
-      { x: 420, y: 700,  taken: false },
-    ];
-    g.ammoB = [
-      { x: 120, y: 2740, amt: 8, taken: false },
-      { x: 420, y: 2050, amt: 8, taken: false },
-      { x: 150, y: 1560, amt: 8, taken: false },
-      { x: 640, y: 1180, amt: 8, taken: false },
-      { x: 250, y: 820,  amt: 8, taken: false },
-    ];
-    g.lakes = [
-      { x: 430, y: 1790, r: 62 },
-      { x: 140, y: 2670, r: 45 },
-      { x: 740, y: 760,  r: 55 },
-    ];
-    g.qs = [
-      { x: 480, y: 2450, r: 40 },
-      { x: 250, y: 1300, r: 45 },
-      { x: 420, y: 250,  r: 50 },
-      { x: 350, y: 3120, r: 40 },
-    ];
-    g.fires = [
-      { x: 620, y: 2120, r: 13 },
-      { x: 600, y: 1250, r: 13 },
-      { x: 140, y: 680,  r: 13 },
-      { x: 550, y: 3050, r: 13 },
-    ];
-    g.radioTr = [
-      { x: 0,   y: 2740, w: 840, h: 60,  line: 'trees are all dead. how long has it been.', done: false },
-      { x: 460, y: 2280, w: 380, h: 160, line: 'dead end. double back. — another way.', done: false },
-      { x: 0,   y: 1380, w: 840, h: 60,  line: 'coordinates hold. come home.', done: false },
-      { x: 0,   y: 980,  w: 370, h: 150, line: 'not this way. static—', done: false },
-      { x: 0,   y: 240,  w: 840, h: 60,  line: 'first light. still walking.', done: false },
-    ];
+    const g = this.g, L = this.L;
+    const start = this._cp ? L.checkpoint.respawn : L.spawn;
+    g.player = { x: start.x, y: start.y, aim: -Math.PI / 2, fireCd: 0, iframes: 0 };
+    const copy = (a) => (a || []).map((o) => ({ ...o }));
+    g.walls = copy(L.walls);
+    g.enemies = (L.enemies || []).map((d, i) => {
+      const p1 = { ...d.p1 }, p2 = { ...d.p2 };
+      return {
+        x: p1.x, y: p1.y, p1, p2, tgt: p2,
+        sentry: p1.x === p2.x && p1.y === p2.y,
+        sniper: !!d.sn, rusher: !!d.ru, rngCur: d.sn ? 200 : (d.ru ? 90 : 105),
+        bN: [2, 3, 5][i % 3], bPause: [0.8, 1.15, 1.6][i % 3],
+        face0: d.f0 || 0, ph: i * 1.7,
+        face: d.f0 || 0, st: d.h ? 'hide' : 'patrol', hp: d.ru ? 1 : 2, dead: false,
+        alertT: 0, fireCd: 0, waitT: 0, searchT: 0, muzzle: 0, lk: null,
+      };
+    });
+    g.trips = (L.trips || []).map((o) => ({ ...o, done: false }));
+    g.mines = (L.mines || []).map((m) => ({ x: m.x, y: m.y, done: false }));
+    g.meds = (L.meds || []).map((o) => ({ ...o, taken: false }));
+    g.ammoB = (L.ammo || []).map((o) => ({ ...o, taken: false }));
+    g.lakes = copy(L.lakes);
+    g.qs = copy(L.quicksand);
+    g.fires = copy(L.fires);
+    g.radioTr = (L.radioTriggers || []).map((o) => ({ ...o, done: false }));
     const kept = this._cpParts || null;
-    g.sparts = [
-      { x: 690, y: 2790, dur: 3,   name: 'MAST',  line: 'antenna mast secured. two more. keep north.' },
-      { x: 430, y: 1660, dur: 4,   name: 'CELL',  line: 'power cell secured. one left.' },
-      { x: 760, y: 470,  dur: 5,   name: 'VALVE', line: 'valve secured. now the tower. make it speak.' },
-    ].map((sp, i) => ({ ...sp, taken: kept ? !!kept[i] : false, prog: 0, alerted: false }));
+    g.sparts = (L.parts || []).map((sp, i) => ({ ...sp, taken: kept ? !!kept[i] : false, prog: 0, alerted: false }));
     g.fix = 0; g.fixing = false; g.towerMsgT = 0; g.fixStage = 0;
-    g.bushes = [
-      { x: 150, y: 3250, r: 22 }, { x: 690, y: 3060, r: 20 }, { x: 90,  y: 2860, r: 19 }, { x: 560, y: 2740, r: 22 },
-      { x: 740, y: 2520, r: 20 }, { x: 120, y: 2380, r: 22 }, { x: 460, y: 2140, r: 19 }, { x: 680, y: 1900, r: 22 },
-      { x: 230, y: 1770, r: 20 }, { x: 90,  y: 1500, r: 20 }, { x: 560, y: 1230, r: 21 }, { x: 200, y: 1020, r: 20 },
-      { x: 700, y: 880,  r: 19 }, { x: 350, y: 640,  r: 18 }, { x: 620, y: 520,  r: 20 }, { x: 150, y: 240,  r: 20 },
-      { x: 600, y: 180,  r: 19 },
-    ];
+    g.bushes = copy(L.bushes);
     g.hidden = false; g.revealT = 0;
     g.bullets = []; g.parts = []; g.keys = {}; g.mouse = null;
     g.fireHeld = false; g.tapShot = false;
@@ -384,8 +278,8 @@ class Signal extends React.Component {
     g.shots = 0; g.hits = 0; g.kills = 0; g.time = 0;
     g.heat = 0; g.lastKnown = null; g.seenNow = false;
     g.flashT = 0; g.shakeT = 0; g.muzzle = 0; g.over = false;
-    g.camX = 260; g.camY = this.H - this.V;
-    if (!g.trees) g.trees = this.makeTrees();
+    g.camX = Math.max(0, Math.min(this.W - this.V, start.x - 160)); g.camY = this.H - this.V;
+    if (!g.trees || g.treesFor !== L.id) { g.trees = this.makeTrees(); g.treesFor = L.id; g.treeGrid = null; }
   }
 
   segDist(px, py, x1, y1, x2, y2) {
@@ -404,15 +298,15 @@ class Signal extends React.Component {
   }
 
   makeTrees() {
-    const g = this.g;
-    const rnd = this.mulberry(9917);
+    const g = this.g, L = this.L;
+    const rnd = this.mulberry(L.treeSeed);
     const trees = [];
     let guard = 0;
-    while (trees.length < 210 && guard++ < 6000) {
-      const x = 14 + rnd() * 812, y = 60 + rnd() * 3240;
+    while (trees.length < L.treeCount && guard++ < 6000) {
+      const x = 14 + rnd() * (this.W - 28), y = 60 + rnd() * (this.H - 160);
       const seed = Math.floor(rnd() * 1e6);
-      if (Math.hypot(x - 420, y - 3320) < 60) continue;
-      if (Math.hypot(x - 418, y - 80) < 110) continue;
+      if (Math.hypot(x - L.spawn.x, y - L.spawn.y) < 60) continue;
+      if (Math.hypot(x - L.tower.x, y - L.tower.y) < 110) continue;
       if (this.inWall(x, y, 10)) continue;
       let bad = false;
       for (const e of g.enemies) {
@@ -429,8 +323,8 @@ class Signal extends React.Component {
       if (bad) continue;
       for (const ab of g.ammoB) if (Math.hypot(x - ab.x, y - ab.y) < 16) { bad = true; break; }
       if (bad) continue;
-      if (Math.hypot(x - 598, y - 1537) < 32) continue;
-      if (Math.hypot(x - 418, y - 82) < 46) continue;
+      if (Math.hypot(x - L.checkpoint.x, y - L.checkpoint.y) < 32) continue;
+      if (Math.hypot(x - L.tower.x, y - (L.tower.y + 2)) < 46) continue;
       for (const L of g.lakes) if (Math.hypot(x - L.x, y - L.y) < L.r + 14) { bad = true; break; }
       if (bad) continue;
       for (const q of g.qs) if (Math.hypot(x - q.x, y - q.y) < q.r + 10) { bad = true; break; }
@@ -449,13 +343,13 @@ class Signal extends React.Component {
   }
 
   buildStatic() {
-    if (!this.staticC) {
+    if (!this.staticC || this.staticC.width !== this.W || this.staticC.height !== this.H) {
       this.staticC = document.createElement('canvas');
       this.staticC.width = this.W; this.staticC.height = this.H;
     }
     const s = this.staticC.getContext('2d');
     s.fillStyle = '#000000'; s.fillRect(0, 0, this.W, this.H);
-    const rnd = this.mulberry(4451);
+    const rnd = this.mulberry(this.L.groundSeed);
     s.fillStyle = '#ffffff';
     for (let i = 0; i < 1900; i++) {
       const x = (rnd() * this.W) | 0, y = (rnd() * this.H) | 0;
@@ -696,7 +590,7 @@ class Signal extends React.Component {
   };
 
   update(dt) {
-    const g = this.g, p = g.player;
+    const g = this.g, p = g.player, L = this.L;
     p.fireCd -= dt; p.iframes -= dt; g.flashT -= dt; g.shakeT -= dt; g.muzzle -= dt;
     g.heat = Math.max(0, (g.heat || 0) - dt);
     for (let i = g.parts.length - 1; i >= 0; i--) {
@@ -755,7 +649,7 @@ class Signal extends React.Component {
     this.collideLakes(p, 3);
     p.x = Math.max(8, Math.min(this.W - 8, p.x));
     p.y = Math.max(40, Math.min(this.H - 40, p.y));
-    const prog = Math.max(0, Math.min(1, (3320 - p.y) / (3320 - 100)));
+    const prog = Math.max(0, Math.min(1, (L.spawn.y - p.y) / (L.spawn.y - (L.tower.y + 20))));
     if (prog > (g.maxProg || 0)) g.maxProg = prog;
     g.alertK = Math.max(0, (g.maxProg - 0.2) / 0.8);
     const moving = (mx !== 0 || my !== 0);
@@ -853,13 +747,13 @@ class Signal extends React.Component {
       if (rt.done) continue;
       if (p.x > rt.x && p.x < rt.x + rt.w && p.y > rt.y && p.y < rt.y + rt.h) { rt.done = true; this.startRadio(rt.line); }
     }
-    if (!this._cp && p.y < 1560) {
+    if (!this._cp && p.y < L.checkpoint.triggerY) {
       this._cp = true;
       this._cpParts = g.sparts.map((s2) => s2.taken);
       this.saveRun();
       this.setState({ hasSave: true });
       this.sfx('win');
-      this.startRadio('checkpoint. progress saved. we hold this position.');
+      this.startRadio(L.radio.checkpoint);
     }
 
     const hitR = this.tm() ? 10 : 8;
@@ -1083,7 +977,7 @@ class Signal extends React.Component {
           this.setState({ parts: nc });
           this.sfx('win');
           this.burst(sp.x, sp.y, 10, '#ffffff', 80);
-          this.startRadio(nc >= 3 ? 'that is all three. get to the tower. make it speak.' : sp.line);
+          this.startRadio(nc >= g.sparts.length ? L.radio.allParts : sp.line);
         }
       } else if (sp.prog > 0) {
         sp.prog = Math.max(0, sp.prog - dt * 0.5);
@@ -1091,18 +985,20 @@ class Signal extends React.Component {
     }
     if (salv && salv.alerted) g.heat = Math.max(g.heat, 5);
 
-    const dTower = Math.hypot(p.x - 418, p.y - 80);
+    const tx = L.tower.x, ty = L.tower.y;
+    const dTower = Math.hypot(p.x - tx, p.y - ty);
     const partsN = g.sparts.filter((s2) => s2.taken).length;
+    const partsAll = g.sparts.length;
     g.towerMsgT = (g.towerMsgT || 0) - dt;
-    if (dTower < 30 && partsN < 3) {
+    if (dTower < 30 && partsN < partsAll) {
       if (g.towerMsgT <= 0) {
         g.towerMsgT = 9;
-        const miss = 3 - partsN;
-        this.startRadio('tower is dead. ' + miss + ' component' + (miss > 1 ? 's' : '') + ' missing. mast. cell. valve.');
+        const miss = partsAll - partsN;
+        this.startRadio('tower is dead. ' + miss + ' component' + (miss > 1 ? 's' : '') + ' missing. ' + g.sparts.map((s3) => s3.name.toLowerCase()).join('. ') + '.');
       }
       g.fixing = false;
-    } else if (dTower < 30 && partsN >= 3) {
-      if (!g.fixing) { g.fixing = true; this.sfx('static'); this.startRadio('patching the tower. hold them off.'); }
+    } else if (dTower < 30 && partsN >= partsAll) {
+      if (!g.fixing) { g.fixing = true; this.sfx('static'); this.startRadio(L.radio.fixing); }
       const q0 = Math.floor(g.fix * 6);
       g.fix = Math.min(1, (g.fix || 0) + dt / 7);
       if (Math.floor(g.fix * 6) > q0 && g.fix < 1) this.sfx('tick');
@@ -1110,10 +1006,10 @@ class Signal extends React.Component {
       if (stN > (g.fixStage || 0) && g.fix < 1) {
         g.fixStage = stN;
         this.sfx('pick');
-        this.burst(418, 78, 9, '#ffffff', 70);
+        this.burst(tx, ty - 2, 9, '#ffffff', 70);
       }
       if (g.heat <= 0) this.sfx('alarm');
-      g.heat = 20; g.lastKnown = { x: 418, y: 96 }; g.lastVel = { x: 0, y: 0 };
+      g.heat = 20; g.lastKnown = { x: tx, y: ty + 16 }; g.lastVel = { x: 0, y: 0 };
       if (g.fix >= 1) this.finish();
     } else {
       g.fixing = false;
@@ -1252,8 +1148,8 @@ class Signal extends React.Component {
     const m = Math.floor(g.time / 60), s2 = ('0' + Math.floor(g.time % 60)).slice(-2);
     const acc = g.shots ? Math.round(100 * g.hits / g.shots) : 0;
     try {
-      localStorage.setItem('thesignal_l1_cleared', '1');
-      localStorage.removeItem('thesignal_l1_save');
+      localStorage.setItem(this.skey('cleared'), '1');
+      localStorage.removeItem(this.skey('save'));
     } catch (err) {}
     this.setState({ complete: true, l1Cleared: true, hasSave: false, statTime: m + ':' + s2, statShots: '' + g.shots, statAcc: acc + '%' });
   }
@@ -1270,41 +1166,43 @@ class Signal extends React.Component {
     ctx.drawImage(this.staticC, sx, sy, V, V, 0, 0, V, V);
     ctx.save(); ctx.translate(-sx, -sy);
 
+    const tx = this.L.tower.x, ty = this.L.tower.y;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(417, 62, 3, 26);
-    ctx.fillRect(413, 70, 11, 1);
-    ctx.fillRect(414, 78, 9, 1);
-    ctx.fillRect(415, 86, 7, 1);
+    ctx.fillRect(tx - 1, ty - 18, 3, 26);
+    ctx.fillRect(tx - 5, ty - 10, 11, 1);
+    ctx.fillRect(tx - 4, ty - 2, 9, 1);
+    ctx.fillRect(tx - 3, ty + 6, 7, 1);
     const fixed = g.fix >= 1;
     const fx3 = g.fix * 3;
     if (fx3 >= 1) {
-      ctx.fillRect(417, 50, 3, 12);
-      ctx.fillRect(414, 56, 9, 1);
+      ctx.fillRect(tx - 1, ty - 30, 3, 12);
+      ctx.fillRect(tx - 4, ty - 24, 9, 1);
     }
     if (fx3 >= 2) {
-      ctx.fillRect(423, 79, 7, 9);
-      ctx.fillStyle = '#000000'; ctx.fillRect(424, 80, 5, 7);
-      ctx.fillStyle = '#e1232b'; ctx.fillRect(425, 82, 3, 2);
+      ctx.fillRect(tx + 5, ty - 1, 7, 9);
+      ctx.fillStyle = '#000000'; ctx.fillRect(tx + 6, ty, 5, 7);
+      ctx.fillStyle = '#e1232b'; ctx.fillRect(tx + 7, ty + 2, 3, 2);
       ctx.fillStyle = '#ffffff';
     }
     if (fixed) {
-      this.ring(ctx, 410, 84, 3.5, '#ffffff');
-      ctx.fillStyle = '#e1232b'; ctx.fillRect(415, 43, 7, 7);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(418, 46, 1, 1);
+      this.ring(ctx, tx - 8, ty + 4, 3.5, '#ffffff');
+      ctx.fillStyle = '#e1232b'; ctx.fillRect(tx - 3, ty - 37, 7, 7);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(tx, ty - 34, 1, 1);
     } else if (t % 3.9 < 0.14) {
-      ctx.fillStyle = '#e1232b'; ctx.fillRect(417, 56, 3, 3);
+      ctx.fillStyle = '#e1232b'; ctx.fillRect(tx - 1, ty - 24, 3, 3);
     }
 
+    const cpx = this.L.checkpoint.x, cpy = this.L.checkpoint.y;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(599, 1541, 2, 8);
-    ctx.fillRect(596, 1549, 8, 1);
-    if (this._cp) { ctx.fillStyle = '#3fbf4f'; ctx.fillRect(598, 1537, 4, 4); }
-    else if (t % 0.8 < 0.4) { ctx.fillStyle = '#e1232b'; ctx.fillRect(598, 1537, 4, 4); }
+    ctx.fillRect(cpx + 1, cpy + 4, 2, 8);
+    ctx.fillRect(cpx - 2, cpy + 12, 8, 1);
+    if (this._cp) { ctx.fillStyle = '#3fbf4f'; ctx.fillRect(cpx, cpy, 4, 4); }
+    else if (t % 0.8 < 0.4) { ctx.fillStyle = '#e1232b'; ctx.fillRect(cpx, cpy, 4, 4); }
 
     if (g.fix > 0 && !g.over) {
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(398, 96, 40, 6);
-      ctx.fillStyle = '#000000'; ctx.fillRect(399, 97, 38, 4);
-      ctx.fillStyle = '#e1232b'; ctx.fillRect(399, 97, Math.round(38 * g.fix), 4);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(tx - 20, ty + 16, 40, 6);
+      ctx.fillStyle = '#000000'; ctx.fillRect(tx - 19, ty + 17, 38, 4);
+      ctx.fillStyle = '#e1232b'; ctx.fillRect(tx - 19, ty + 17, Math.round(38 * g.fix), 4);
     }
 
     for (const sp of g.sparts) {
@@ -1446,7 +1344,7 @@ class Signal extends React.Component {
         const d2 = Math.hypot(sp.x - p.x, sp.y - p.y);
         if (d2 < bo) { bo = d2; obj = sp; }
       }
-      const ojx = obj ? obj.x : 418, ojy = obj ? obj.y : 80;
+      const ojx = obj ? obj.x : this.L.tower.x, ojy = obj ? obj.y : this.L.tower.y;
       const exx = ojx - sx, eyy = ojy - sy;
       if ((exx < 0 || exx > V || eyy < 0 || eyy > V) && t % 1.1 < 0.72) {
         const cxx = Math.round(Math.max(4, Math.min(V - 7, exx))), cyy = Math.round(Math.max(4, Math.min(V - 7, eyy)));
@@ -1488,7 +1386,7 @@ class Signal extends React.Component {
     ctx.fillRect(mx + mw + 2, my - 3, 1, mh + 6);
     const TX = (wx) => Math.round(mx + wx * k);
     const TY = (wy) => Math.round(my + wy * k);
-    const tx = TX(418), ty = TY(80);
+    const tx = TX(this.L.tower.x), ty = TY(this.L.tower.y);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(tx, ty - 4, 1, 8);
     ctx.fillRect(tx - 3, ty - 2, 7, 1);
@@ -1830,7 +1728,7 @@ class Signal extends React.Component {
   newRun = () => {
     this.ensureAudio();
     this._cp = false; this._cpParts = null; this._deathAmmo = null;
-    try { localStorage.removeItem('thesignal_l1_save'); } catch (err) {}
+    try { localStorage.removeItem(this.skey('save')); } catch (err) {}
     this.resetRun();
     this.buildStatic();
     this.sfx('static');
@@ -1850,18 +1748,20 @@ class Signal extends React.Component {
     if (this._obInt) { clearInterval(this._obInt); this._obInt = null; }
     try { localStorage.setItem('thesignal_l1_onboarded', '1'); } catch (err) {}
     this.g.fireHeld = false; this.g.tapShot = false; this.g.keys = {};
-    this.setState({ started: true, hintOn: true, obSeen: true });
+    this.setState({ started: true, hintOn: true, obSeen: true, markerHintDone: false });
+    const hintGen = this._hintGen = (this._hintGen || 0) + 1;
     this.sfx('win');
-    this._timers.push(setTimeout(() => this.startRadio('copy. three parts. then the tower. moving north.'), 1000));
+    this._timers.push(setTimeout(() => this.startRadio(this.L.radio.start), 1000));
     this._timers.push(setTimeout(() => this.setState({ hintOn: false }), 6200));
+    this._timers.push(setTimeout(() => { if (this._hintGen === hintGen) this.setState({ markerHintDone: true }); }, 13200));
   };
 
   saveRun() {
     try {
       if (this._cp || (this._cpParts && this._cpParts.some(Boolean))) {
-        localStorage.setItem('thesignal_l1_save', JSON.stringify({ cp: !!this._cp, parts: this._cpParts || [], ammo: this.state.ammo }));
+        localStorage.setItem(this.skey('save'), JSON.stringify({ cp: !!this._cp, parts: this._cpParts || [], ammo: this.state.ammo }));
       } else {
-        localStorage.removeItem('thesignal_l1_save');
+        localStorage.removeItem(this.skey('save'));
       }
     } catch (err) {}
   }
@@ -1915,15 +1815,17 @@ class Signal extends React.Component {
       },
     }));
     const pn = this.state.parts;
-    const partCells = [0, 1, 2].map((i) => ({
+    const nParts = this.g && this.g.sparts ? this.g.sparts.length : 3;
+    const partCells = Array.from({ length: nParts }, (_, i) => i).map((i) => ({
       style: {
         width: '9px', height: '9px', boxSizing: 'border-box', transform: 'rotate(45deg)',
-        border: '2px solid ' + (pn === 3 ? '#e1232b' : '#ffffff'),
-        background: i < pn ? (pn === 3 ? '#e1232b' : '#ffffff') : 'transparent',
+        border: '2px solid ' + (pn === nParts ? '#e1232b' : '#ffffff'),
+        background: i < pn ? (pn === nParts ? '#e1232b' : '#ffffff') : 'transparent',
       },
     }));
     return {
       creatorName: this.props.creatorName ?? 'YOUR NAME',
+      levelLabel: 'LVL ' + this.L.num + ' // ' + this.L.name,
       partCells, fixOn: !!this.state.fixText, fixText: this.state.fixText,
       canvasRef: this.canvasRef, padRef: this.padRef, fireBtnRef: this.fireBtnRef,
       moveBaseRef: this.moveBaseRef, moveKnobRef: this.moveKnobRef,
@@ -1963,7 +1865,7 @@ class Signal extends React.Component {
       diffDesc: this.state.diffHard ? 'FASTER PATROLS. SCARCE AMMO. RELENTLESS HUNTS.' : 'STANDARD PATROLS. FAIR SCAVENGE.',
       radioOn: this.state.radioOn, radioText: this.state.radioText,
       hintOn: this.state.hintOn,
-      markerHintOn: this.state.started && !this.state.hintOn && !this.state.fixText && this.state.parts === 0 && !this.state.dead && !this.state.complete,
+      markerHintOn: this.state.started && !this.state.hintOn && !this.state.markerHintDone && !this.state.fixText && this.state.parts === 0 && !this.state.dead && !this.state.complete,
       markerHintText: this.tm() ? 'FOLLOW THE WHITE MARKERS' : 'FOLLOW THE WHITE MARKERS · [TAB] MAP',
       hintText: this.tm() ? 'STICK — MOVE + AIM · FIRE — SHOOT' : 'WASD MOVE · MOUSE AIM · CLICK FIRE',
       isTouch: this.tm(), isDesktop: !this.tm(),
@@ -1984,7 +1886,7 @@ class Signal extends React.Component {
       hasSaveUI: this.state.hasSave && this.state.obStep === 0,
       focusPause: !!this.state.focusPause && !this.state.dead && !this.state.complete,
       obTitleBtn: this.state.obSeen ? (this.state.hasSave ? 'CONTINUE ▸' : 'START MISSION') : 'BEGIN ▸',
-      obMapBtn: this.state.obSeen ? (this.state.hasSave ? 'CONTINUE LVL 01 ▸' : 'START LVL 01 ▸') : 'NEXT ▸',
+      obMapBtn: this.state.obSeen ? (this.state.hasSave ? 'CONTINUE LVL ' + this.L.num + ' ▸' : 'START LVL ' + this.L.num + ' ▸') : 'NEXT ▸',
       levels: this.state.started ? [] : [
         { n: '06', name: 'THE SIGNAL' },
         { n: '05', name: "SNIPER'S MILE" },
@@ -2012,8 +1914,6 @@ class Signal extends React.Component {
       statTime: this.state.statTime, statShots: this.state.statShots, statAcc: this.state.statAcc,
     };
   }
-
-  /* ---- render() (ported from the .dc template) ---- */
   render() {
     const v = this.renderVals();
     return (
@@ -2025,7 +1925,7 @@ class Signal extends React.Component {
           <div style={css("width:100%;display:flex;align-items:flex-end;justify-content:space-between;padding:10px 2px;box-sizing:border-box")}>
             <div>
               <div style={css("font-size:13px;font-weight:700;letter-spacing:2px")}>THE SIGNAL</div>
-              <div style={css("font-family:'VT323',monospace;font-size:15px;color:#e1232b;margin-top:2px")}>LVL 01 // FIRST LIGHT</div>
+              <div style={css("font-family:'VT323',monospace;font-size:15px;color:#e1232b;margin-top:2px")}>{v.levelLabel}</div>
             </div>
             <div style={css("display:flex;align-items:center;gap:10px;row-gap:5px;flex-wrap:wrap;justify-content:flex-end")}>
   
@@ -2075,19 +1975,19 @@ class Signal extends React.Component {
   
             {v.hintOn && (
               <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
-                <div style={css("background:#000000;border:1px solid #ffffff;padding:3px 10px;font-family:'VT323',monospace;font-size:16px")}>{v.hintText}</div>
+                <div style={css("background:#e8c84a;color:#000000;padding:4px 12px;font-family:'VT323',monospace;font-size:16px;letter-spacing:1px")}>{v.hintText}</div>
               </div>
             )}
   
             {v.markerHintOn && (
               <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
-                <div style={css("background:#000000;border:1px solid #ffffff;padding:3px 10px;font-family:'VT323',monospace;font-size:16px")}>{v.markerHintText}</div>
+                <div style={css("background:#e8c84a;color:#000000;padding:4px 12px;font-family:'VT323',monospace;font-size:16px;letter-spacing:1px")}>{v.markerHintText}</div>
               </div>
             )}
 
             {v.fixOn && (
               <div style={css("position:absolute;top:10px;left:0;right:0;display:flex;justify-content:center;pointer-events:none")}>
-                <div style={css("background:#000000;border:1px solid #e1232b;color:#e1232b;padding:3px 10px;font-family:'VT323',monospace;font-size:16px;animation:sigblink 1s steps(1) infinite")}>{v.fixText}</div>
+                <div style={css("background:#e1232b;color:#000000;padding:4px 12px;font-family:'VT323',monospace;font-size:16px;letter-spacing:1px;animation:sigblink 1s steps(1) infinite")}>{v.fixText}</div>
               </div>
             )}
   
@@ -2208,7 +2108,7 @@ class Signal extends React.Component {
                   <div style={css("width:12px;height:12px;background:#e1232b;animation:sigblink 1.1s steps(1) infinite;flex-shrink:0")} />
                   <div style={css("font-size:clamp(28px,9vw,48px);font-weight:700;letter-spacing:7px;line-height:1")}>THE SIGNAL</div>
                 </div>
-                <div style={css("font-family:'VT323',monospace;font-size:20px;color:#e1232b;letter-spacing:3px;margin-top:12px")}>LVL 01 // FIRST LIGHT</div>
+                <div style={css("font-family:'VT323',monospace;font-size:20px;color:#e1232b;letter-spacing:3px;margin-top:12px")}>{v.levelLabel}</div>
                 <div style={css("font-family:'VT323',monospace;font-size:18px;color:#9a9a9a;margin-top:14px;line-height:1.5")}>
                   THE WAR IS OVER. THE FOREST IS DEAD.<br />NO ONE IS COMING.
                 </div>
@@ -2320,11 +2220,11 @@ class Signal extends React.Component {
                 </div>
               </React.Fragment>
             )}
-  
+
             {/* --- field manual / difficulty --- */}
             {v.obControls && (
               <React.Fragment>
-                <div style={css("position:absolute;top:calc(13vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(400px, calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-start;text-align:left")}>
+                <div style={css("position:absolute;top:calc(9vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(400px, calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-start;text-align:left")}>
 
                   <div style={css("font-family:'VT323',monospace;font-size:15px;line-height:1;color:#e1232b;letter-spacing:3px")}>FIELD MANUAL</div>
 
@@ -2348,18 +2248,15 @@ class Signal extends React.Component {
                       <div style={css("color:#ffffff")}>FIRE</div><div style={css("color:#8a8a8a")}>TAP · HOLD = AUTO</div>
                     </div>
                   )}
-                  {v.isTouch && (
-                    <div style={css("font-family:'VT323',monospace;font-size:19px;line-height:1.3;color:#5a5a5a;margin-top:6px")}>YOU AIM WHERE YOU WALK. THE GUN SNAPS TO TARGETS.</div>
-                  )}
 
-                  <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin:24px 0 8px")}>RULES</div>
+                  <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin:20px 0 8px")}>RULES</div>
                   <div style={css("display:flex;flex-direction:column;gap:4px;font-family:'VT323',monospace;font-size:19px;line-height:1.3")}>
                     <div style={css("color:#8a8a8a")}>SALVAGING IS LOUD. GREEN BRUSH HIDES YOU.</div>
                     <div style={css("color:#8a8a8a")}>EVERY 3 KILLS ▸ TRI-SHOT FOR 5 SECONDS.</div>
                     <div style={css("color:#e1232b")}>RED CONES SEE YOU. GUNFIRE CARRIES.</div>
                   </div>
 
-                  <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin:24px 0 10px")}>DIFFICULTY</div>
+                  <div style={css("font-family:'VT323',monospace;font-size:14px;letter-spacing:3px;color:#5a5a5a;margin:20px 0 10px")}>DIFFICULTY</div>
                   <div style={css("display:flex;gap:10px")}>
                     <button onClick={v.setRecruit} style={css(v.recruitStyle)}>RECRUIT</button>
                     <button onClick={v.setVeteran} style={css(v.veteranStyle)}>VETERAN</button>
@@ -2376,7 +2273,7 @@ class Signal extends React.Component {
                 </div>
               </React.Fragment>
             )}
-  
+
             {v.obTitle && (
               <div style={css("position:absolute;bottom:calc(12px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-family:'VT323',monospace;font-size:15px;color:#5a5a5a;letter-spacing:2px")}>A GAME BY {v.creatorName}</div>
             )}
