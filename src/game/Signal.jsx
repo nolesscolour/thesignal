@@ -42,6 +42,9 @@ function Btn({ base, hover, children, ...rest }) {
   );
 }
 
+/* Respawning at a checkpoint never gives fewer rounds than this. */
+const MIN_RESPAWN_AMMO = 12;
+
 /* The canvas cursor, kept as one string so its quoting can't get mangled. */
 const CANVAS_CSS = `width:100%;height:100%;display:block;image-rendering:pixelated;cursor:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2217%22 height=%2217%22><g fill=%22%23000%22><rect x=%220%22 y=%226%22 width=%227%22 height=%225%22/><rect x=%2210%22 y=%226%22 width=%227%22 height=%225%22/><rect x=%226%22 y=%220%22 width=%225%22 height=%227%22/><rect x=%226%22 y=%2210%22 width=%225%22 height=%227%22/></g><g fill=%22%23fff%22><rect x=%221%22 y=%228%22 width=%225%22 height=%221%22/><rect x=%2211%22 y=%228%22 width=%225%22 height=%221%22/><rect x=%228%22 y=%221%22 width=%221%22 height=%225%22/><rect x=%228%22 y=%2211%22 width=%221%22 height=%225%22/></g></svg>') 8 8, crosshair`;
 class Signal extends React.Component {
@@ -85,18 +88,30 @@ class Signal extends React.Component {
     return i >= 0 && i < LEVELS.length - 1 ? LEVELS[i + 1] : null;
   }
 
-  /* Reads a level's saved checkpoint / parts into the run fields. */
+  /* Reads a level's saved checkpoint / parts / checkpoint ammo into the run fields. */
   readSave() {
-    this._cpIdx = -1; this._cpParts = null; this._deathAmmo = null;
+    this._cpIdx = -1; this._cpParts = null; this._cpAmmo = null;
     try {
       const sv = JSON.parse(localStorage.getItem(this.skey('save')) || 'null');
       if (sv) {
         this._cpIdx = typeof sv.cp === 'number' ? sv.cp : (sv.cp ? 0 : -1);
         this._cpParts = sv.parts || null;
-        if (sv.ammo != null) this._deathAmmo = sv.ammo;
+        if (typeof sv.ammo === 'number') this._cpAmmo = sv.ammo;
       }
     } catch (err) {}
   }
+
+  /* Ammo for any spawn: full at the level start; at a checkpoint, what the
+     player held when they reached it, never below MIN_RESPAWN_AMMO. */
+  spawnAmmo() {
+    const max = this.maxAmmo();
+    if (this._cpIdx < 0 || typeof this._cpAmmo !== 'number' || !isFinite(this._cpAmmo)) return max;
+    return Math.max(MIN_RESPAWN_AMMO, Math.min(max, Math.round(this._cpAmmo)));
+  }
+
+  /* Tab title and screen label for the current level, e.g. "THE SIGNAL — Level 02". */
+  levelTitle() { return 'THE SIGNAL — Level ' + this.L.num; }
+  syncTitle() { try { document.title = this.levelTitle(); } catch (err) {} }
 
   hasSaveFor(id) {
     try { const sv = JSON.parse(localStorage.getItem('thesignal_l' + id + '_save') || 'null'); return !!(sv && (typeof sv.cp === 'number' ? sv.cp >= 0 : sv.cp)); } catch (err) { return false; }
@@ -106,6 +121,7 @@ class Signal extends React.Component {
   loadLevel(id) {
     this._levelId = levelById(id).id;
     try { localStorage.setItem('thesignal_last', String(this._levelId)); } catch (err) {}
+    this.syncTitle();
     this.W = this.L.W; this.H = this.L.H;
     if (this._radioInt) { clearInterval(this._radioInt); this._radioInt = null; }
     this.readSave();
@@ -113,7 +129,7 @@ class Signal extends React.Component {
     this.buildStatic();
     this.setState({
       levelId: this._levelId, hasSave: this._cpIdx >= 0,
-      health: 4, ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
+      health: 4, ammo: this.spawnAmmo(),
       kills: 0, dead: false, complete: false, hunted: false, hiddenOn: false,
       radioOn: false, hintOn: false, fixText: '', rapidSec: 0,
       parts: this.g.sparts.filter((s2) => s2.taken).length,
@@ -220,11 +236,12 @@ class Signal extends React.Component {
       seen = !!localStorage.getItem('thesignal_l1_onboarded');
       if (localStorage.getItem('thesignal_diff') === 'vet') this.setState({ diffHard: true });
     } catch (err) {}
-    this.setState({ obSeen: seen, cleared: clearedMap, levelId: this._levelId, ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo() });
+    this.syncTitle();
+    this.setState({ obSeen: seen, cleared: clearedMap, levelId: this._levelId, ammo: this.spawnAmmo() });
     if (this._cpIdx >= 0 || (this._cpParts && this._cpParts.some(Boolean))) {
       this.setState({
         hasSave: this._cpIdx >= 0,
-        ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
+        ammo: this.spawnAmmo(),
         parts: this.g.sparts.filter((s2) => s2.taken).length,
       });
     }
@@ -871,6 +888,7 @@ class Signal extends React.Component {
       if (p.y < L.checkpoints[ci].triggerY) {
         this._cpIdx = ci;
         this._cpParts = g.sparts.map((s2) => s2.taken);
+        this._cpAmmo = this.state.ammo;
         this.saveRun();
         this.setState({ hasSave: true });
         this.sfx('win');
@@ -1213,7 +1231,7 @@ class Signal extends React.Component {
     }
     if (spawned > 0) {
       this.sfx('alarm');
-      this.startRadio('movement on the ridge. more of them coming.');
+      this.startRadio((this.L.radio && this.L.radio.hunters) || 'movement on the ridge. more of them coming.');
     }
   }
 
@@ -1299,7 +1317,6 @@ class Signal extends React.Component {
     const h = this.state.health - 1;
     this.setState({ health: h });
     if (h <= 0) {
-      this._deathAmmo = this.state.ammo;
       g.over = true; this.sfx('die');
       this._timers.push(setTimeout(() => this.setState({ dead: true }), 500));
     }
@@ -2056,7 +2073,7 @@ class Signal extends React.Component {
 
   newRun = () => {
     this.ensureAudio();
-    this._cpIdx = -1; this._cpParts = null; this._deathAmmo = null;
+    this._cpIdx = -1; this._cpParts = null; this._cpAmmo = null;
     try { localStorage.removeItem(this.skey('save')); } catch (err) {}
     this.resetRun();
     this.buildStatic();
@@ -2130,7 +2147,7 @@ class Signal extends React.Component {
   saveRun() {
     try {
       if (this._cpIdx >= 0 || (this._cpParts && this._cpParts.some(Boolean))) {
-        localStorage.setItem(this.skey('save'), JSON.stringify({ cp: this._cpIdx, parts: this._cpParts || [], ammo: this.state.ammo }));
+        localStorage.setItem(this.skey('save'), JSON.stringify({ cp: this._cpIdx, parts: this._cpParts || [], ammo: this._cpAmmo }));
       } else {
         localStorage.removeItem(this.skey('save'));
       }
@@ -2146,8 +2163,7 @@ class Signal extends React.Component {
 
   exitToMenu = () => {
     if (!this.state.started) return;
-    if (this.state.complete) { this._cpIdx = -1; this._deathAmmo = null; this._cpParts = null; }
-    else { this._deathAmmo = this.state.ammo; }
+    if (this.state.complete) { this._cpIdx = -1; this._cpAmmo = null; this._cpParts = null; }
     this.saveRun();
     if (this._radioInt) { clearInterval(this._radioInt); this._radioInt = null; }
     this.g.fireHeld = false; this.g.tapShot = false; this.g.keys = {};
@@ -2156,7 +2172,7 @@ class Signal extends React.Component {
     this.sfx('static');
     this.setState({
       started: false, obStep: 0, hasSave: this._cpIdx >= 0,
-      health: 4, ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
+      health: 4, ammo: this.spawnAmmo(),
       kills: 0, dead: false, complete: false, hunted: false, hiddenOn: false,
       radioOn: false, hintOn: false, fixText: '',
       parts: this.g.sparts.filter((s2) => s2.taken).length,
@@ -2165,12 +2181,12 @@ class Signal extends React.Component {
 
   restart = () => {
     if (!this.state.started) return;
-    if (this.state.complete) { this._cpIdx = -1; this._deathAmmo = null; this._cpParts = null; }
+    if (this.state.complete) { this._cpIdx = -1; this._cpAmmo = null; this._cpParts = null; }
     this.resetRun();
     this.buildStatic();
     this.setState({
       health: 4,
-      ammo: (this._cpIdx >= 0 && this._deathAmmo != null) ? this._deathAmmo : this.maxAmmo(),
+      ammo: this.spawnAmmo(),
       kills: 0, dead: false, complete: false, hunted: false,
       parts: this.g.sparts.filter((s2) => s2.taken).length, fixText: '',
     });
@@ -2296,7 +2312,7 @@ class Signal extends React.Component {
   render() {
     const v = this.renderVals();
     return (
-      <div data-screen-label="THE SIGNAL — Level 1" style={css("position:relative;height:100dvh;background:#000000;display:flex;flex-direction:column;align-items:center;font-family:'Silkscreen',monospace;color:#ffffff;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;overflow:hidden;-webkit-tap-highlight-color:transparent")}>
+      <div data-screen-label={this._booted ? this.levelTitle() : undefined} style={css("position:relative;height:100dvh;background:#000000;display:flex;flex-direction:column;align-items:center;font-family:'Silkscreen',monospace;color:#ffffff;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;overflow:hidden;-webkit-tap-highlight-color:transparent")}>
   
         <div style={css("width:min(100vw, calc(100dvh - 265px - env(safe-area-inset-bottom)), 560px);display:flex;flex-direction:column;margin-top:auto;margin-bottom:auto")}>
   

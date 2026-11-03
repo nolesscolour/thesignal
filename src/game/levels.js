@@ -23,6 +23,7 @@ const FIRST_LIGHT = {
     checkpoint: 'checkpoint. progress saved. we hold this position.',
     allParts: 'that is all three. get to the tower. make it speak.',
     fixing: 'patching the tower. hold them off.',
+    hunters: 'movement on the ridge. more of them coming.',
   },
   walls: [
     { x: 0,   y: 2950, w: 330, h: 26 },
@@ -385,6 +386,7 @@ const THE_RUINS = {
     checkpoint: 'checkpoint saved.',
     allParts: 'that is all three. get to the relay. make it speak.',
     fixing: 'patching relay two. hold them off.',
+    hunters: 'movement in the ruins. more of them coming.',
   },
 };
 
