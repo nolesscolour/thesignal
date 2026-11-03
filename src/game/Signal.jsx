@@ -153,7 +153,7 @@ class Signal extends React.Component {
   componentDidMount() {
     if (this._booted) return;
     this._booted = true;
-    this._unlockAll = /[?&]unlockall\b/.test(window.location.search || '');
+    this._unlockAll = import.meta.env.DEV && /[?&]unlockall\b/.test(window.location.search || '');
     this._debug = /[?&]debug\b/.test(window.location.search || '');
     window.__sigMounts = (window.__sigMounts || 0) + 1;
     const clearedMap = {};
